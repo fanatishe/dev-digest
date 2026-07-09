@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useCallback } from "react";
-import { Icon, Badge, Button, SectionLabel, EmptyState } from "@devdigest/ui";
+import { Icon, Badge, Button, SectionLabel, EmptyState, SEV } from "@devdigest/ui";
 import { RunStatus } from "../RunStatus";
 import { RunHistory } from "../RunHistory/RunHistory";
+import { findingsByRun } from "../RunHistory/helpers";
 import { ReviewRunAccordion } from "../ReviewRunAccordion";
 import { s } from "./styles";
+import type { Severity } from "@devdigest/ui";
 import type { FindingRecord, ReviewRecord, RunSummary, PrCommit } from "@devdigest/shared";
 import type { UseMutationResult } from "@tanstack/react-query";
 
@@ -21,6 +23,12 @@ interface FindingsTabProps {
   /** owner/repo + head sha — used to deep-link a finding's file:line to GitHub. */
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Active severity filter (from `?severity=`), applied to every run's findings. */
+  severity?: Severity | null;
+  /** Set the severity filter — fired by a timeline counter chip. */
+  onSelectSeverity?: (severity: Severity) => void;
+  /** Clear the active severity filter. */
+  onClearSeverity?: () => void;
   onOpenTrace: (id: string) => void;
   onDelete: (id: string) => void;
   onRunDone: () => void;
@@ -37,10 +45,15 @@ export function FindingsTab({
   cancelMutation,
   repoFullName,
   headSha,
+  severity,
+  onSelectSeverity,
+  onClearSeverity,
   onOpenTrace,
   onDelete,
   onRunDone,
 }: FindingsTabProps) {
+  const runFindings = React.useMemo(() => findingsByRun(runs), [runs]);
+
   const handleCancelAll = useCallback(() => {
     liveRunIds.forEach((id) => cancelMutation.mutate(id));
   }, [liveRunIds, cancelMutation]);
@@ -70,6 +83,16 @@ export function FindingsTab({
   const handleGoToReview = useCallback((runId: string) => {
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
+
+  // A timeline counter chip both applies the severity filter and scrolls to the
+  // run's accordion below, so the filtered findings are immediately visible.
+  const handleSelectSeverity = useCallback(
+    (runId: string, sev: Severity) => {
+      onSelectSeverity?.(sev);
+      handleGoToReview(runId);
+    },
+    [onSelectSeverity, handleGoToReview],
+  );
 
   return (
     <section>
@@ -131,8 +154,10 @@ export function FindingsTab({
           <RunHistory
             runs={prRuns ?? []}
             commits={prCommits}
+            findingsByRun={runFindings}
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
+            onSelectSeverity={handleSelectSeverity}
             onDelete={handleDelete}
           />
         </div>
@@ -140,7 +165,31 @@ export function FindingsTab({
 
       <SectionLabel
         icon="AlertOctagon"
-        right={<span style={{ fontSize: 12, color: "var(--text-muted)" }}>grouped by run · newest first</span>}
+        right={
+          severity ? (
+            <button
+              type="button"
+              onClick={onClearSeverity}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: "none",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "2px 8px",
+                fontSize: 12,
+                color: SEV[severity]?.c ?? "var(--text-secondary)",
+                cursor: "pointer",
+              }}
+            >
+              {SEV[severity]?.label ?? severity} only
+              <Icon.X size={12} />
+            </button>
+          ) : (
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>grouped by run · newest first</span>
+          )
+        }
       >
         Review runs
       </SectionLabel>
@@ -162,6 +211,7 @@ export function FindingsTab({
             defaultOpen={i === 0}
             repoFullName={repoFullName}
             headSha={headSha}
+            severity={severity}
             targetRunId={target?.runId ?? null}
             targetNonce={target?.n ?? 0}
           />

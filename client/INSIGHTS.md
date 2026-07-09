@@ -7,6 +7,14 @@ for the rubric.
 ## What Works
 <!-- Approaches, patterns, and solutions that proved effective. problem → what to do. -->
 
+- **Hover popover = JS state + popup rendered as a DOM descendant of the anchor.**
+  `vendor/ui/primitives/FindingsPopover.tsx` is the module's first real popover
+  (everything else used native `title`). Keep the popup element a *child* of the
+  wrapper that owns `onMouseEnter/Leave`, so moving the pointer onto the popup does
+  NOT fire `mouseleave` (descendants count as "inside" the wrapper); add a ~120ms
+  close delay to cover the anchor→popup gap, plus `onFocus/onBlur` for a11y. CSS-only
+  `:hover` can't survive pointer travel or drive click-to-filter state. (2026-07-09)
+
 ## What Doesn't Work
 <!-- Dead ends and antipatterns. The most valuable section — don't skip it. -->
 
@@ -25,11 +33,24 @@ for the rubric.
 ## Tool & Library Notes
 <!-- Quirks and gotchas of dependencies/tooling. -->
 
+- **The UI `Severity` type (`vendor/ui/tokens.ts`) is wider than the contract one.**
+  It adds `INFO`, so indexing a 3-key `{CRITICAL,WARNING,SUGGESTION}` counts object
+  by a `Severity` from `@devdigest/ui` fails typecheck (`Property 'INFO' does not
+  exist`). Narrow the iteration keys with `as const` (e.g.
+  `["CRITICAL","WARNING","SUGGESTION"] as const`) rather than typing them `Severity[]`.
+  Contract-side `Severity` (`vendor/shared/contracts/findings.ts`) is the 3-value enum. (2026-07-09)
+
 ## Recurring Errors & Fixes
 <!-- An error seen more than once + its fix. -->
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-09
+Added findings-severity counters + hover popover + `?severity=` filter to the PR list
+and agent-runs timeline. New `FindingsPopover` primitive and shared
+`components/FindingsSeverityCounts`; timeline counts derived client-side via
+`RunHistory/helpers.ts` (`findingsByRun`), list counts from the server rollup.
 
 ## Open Questions
 <!-- Unresolved things worth investigating. -->

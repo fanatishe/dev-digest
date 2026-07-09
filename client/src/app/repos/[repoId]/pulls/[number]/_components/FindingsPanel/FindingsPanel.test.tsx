@@ -12,9 +12,8 @@ import { FindingsPanel } from "./FindingsPanel";
 
 afterEach(cleanup);
 
-const FINDINGS: FindingRecord[] = [
-  {
-    id: "f1",
+function finding(o: Partial<FindingRecord> & { id: string }): FindingRecord {
+  return {
     severity: "CRITICAL",
     category: "security",
     title: "Hardcoded secret",
@@ -30,8 +29,11 @@ const FINDINGS: FindingRecord[] = [
     review_id: "r1",
     accepted_at: null,
     dismissed_at: null,
-  },
-];
+    ...o,
+  };
+}
+
+const FINDINGS: FindingRecord[] = [finding({ id: "f1" })];
 
 function renderWithIntl(ui: React.ReactElement) {
   return render(
@@ -51,5 +53,15 @@ describe("FindingsPanel (smoke)", () => {
   it("shows the empty state when nothing matches", () => {
     renderWithIntl(<FindingsPanel findings={[]} prId="pr1" />);
     expect(screen.getByText("No findings match")).toBeInTheDocument();
+  });
+
+  it("keeps only the requested severity when the severity filter is set", () => {
+    const mixed: FindingRecord[] = [
+      finding({ id: "f1", severity: "CRITICAL", title: "Critical one" }),
+      finding({ id: "f2", severity: "WARNING", title: "Warning one" }),
+    ];
+    renderWithIntl(<FindingsPanel findings={mixed} prId="pr1" severity="WARNING" />);
+    expect(screen.getByText("Warning one")).toBeInTheDocument();
+    expect(screen.queryByText("Critical one")).not.toBeInTheDocument();
   });
 });

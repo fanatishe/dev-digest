@@ -4,8 +4,9 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Icon, Avatar, Badge, CircularScore } from "@devdigest/ui";
+import { Icon, Avatar, Badge, CircularScore, type Severity } from "@devdigest/ui";
 import { RunCostBadge } from "@/components/RunCostBadge";
+import { FindingsSeverityCounts } from "@/components/FindingsSeverityCounts";
 import type { PrMeta } from "@/lib/types";
 import { SIZE_COLOR, STATUS_META } from "../../constants";
 import { relativeTime, sizeOf } from "../../helpers";
@@ -53,6 +54,15 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
         ) : (
           <span style={s.muted}>—</span>
         )}
+      </div>
+      <div>
+        <FindingsSeverityCounts
+          counts={pr.findings}
+          preview={pr.findings_preview}
+          onSelectSeverity={(sev: Severity) =>
+            router.push(`/repos/${repoId}/pulls/${pr.number}?tab=findings&severity=${sev}`)
+          }
+        />
       </div>
       <div>
         <Badge dot color={st.c} bg="transparent">

@@ -1,4 +1,10 @@
 {
+  "counts": {
+    "header": "{count} findings",
+    "filterBy": "Show only {severity} findings",
+    "confidence": "conf",
+    "none": "No findings"
+  },
   "finding": {
     "accepted": "accepted",
     "dismissed": "dismissed",
@@ -92,6 +98,7 @@
       "author": "Author",
       "size": "Size",
       "score": "Score",
+      "findings": "Findings",
       "status": "Status",
       "cost": "Cost",
       "updated": "Updated"

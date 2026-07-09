@@ -2,9 +2,11 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
+import { Badge, Icon, CircularScore, type IconName, type Severity } from "@devdigest/ui";
 import { RunCostBadge } from "@/components/RunCostBadge";
+import { FindingsSeverityCounts } from "@/components/FindingsSeverityCounts";
 import type { RunSummary, PrCommit } from "@devdigest/shared";
+import type { RunFindings } from "./helpers";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -88,16 +90,22 @@ function tsOf(s: string | null | undefined): number {
 export function RunHistory({
   runs,
   commits = [],
+  findingsByRun,
   onOpenTrace,
   onGoToReview,
+  onSelectSeverity,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /** Per-run severity breakdown + hover preview, keyed by run_id. */
+  findingsByRun?: Map<string, RunFindings>;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
   onGoToReview?: (runId: string) => void;
+  /** Drill into a single severity of a run's findings (clicking a counter chip). */
+  onSelectSeverity?: (runId: string, severity: Severity) => void;
   onDelete?: (runId: string) => void;
 }) {
   const t = useTranslations("prReview");
@@ -150,6 +158,7 @@ export function RunHistory({
         const r = item.run;
         const o = outcomeOf(r);
         const settled = r.status === "done";
+        const rf = findingsByRun?.get(r.run_id);
         return (
           <div key={`run:${r.run_id}`} style={rowStyle}>
             <Badge color={o.color} bg={o.bg} icon={o.icon}>
@@ -190,8 +199,16 @@ export function RunHistory({
                 </div>
               )}
               {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {t("runStatus.findings", { count: r.findings_count ?? 0 })}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" }}>
+                  {rf ? (
+                    <FindingsSeverityCounts
+                      counts={rf.counts}
+                      preview={rf.preview}
+                      onSelectSeverity={(sev) => onSelectSeverity?.(r.run_id, sev)}
+                    />
+                  ) : (
+                    t("runStatus.findings", { count: r.findings_count ?? 0 })
+                  )}
                   {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
                 </div>
               )}

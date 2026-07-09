@@ -13,6 +13,15 @@ for the rubric.
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
 
+- **`reviewer-core` already returns more than `run-executor` persists.** The review
+  `outcome` carries `costUsd` (real OpenRouter `usage.cost`, with an estimate
+  fallback) but `run-executor.ts` long destructured only `{ tokensIn, tokensOut,
+  grounding }` and dropped it. Before adding new plumbing for a run metric, check
+  whether `outcome` already computes it — the gap is usually persistence, not compute.
+- **Adding a required field to a shared Zod contract breaks fixtures.** Making
+  `RunStats.cost_usd` non-null failed `test/contracts.test.ts` (and client fixtures).
+  After a contract change, grep tests for object literals that build it. (2026-07-09)
+
 ## Tool & Library Notes
 <!-- Quirks and gotchas of dependencies/tooling. -->
 

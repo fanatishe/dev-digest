@@ -47,6 +47,7 @@
     "error": "error",
     "cancelled": "cancelled",
     "running": "running",
+    "tokens": "{count, number} tok",
     "findings": "{count} finding(s)",
     "blockers": " · {count} blockers"
   },
@@ -92,6 +93,7 @@
       "size": "Size",
       "score": "Score",
       "status": "Status",
+      "cost": "Cost",
       "updated": "Updated"
     },
     "filesCount": "{count} files",

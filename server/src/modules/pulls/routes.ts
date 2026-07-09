@@ -188,18 +188,23 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
               b.confidence - a.confidence,
           )
           .slice(0, PREVIEW_CAP)
-          .map((f): FindingPreview => ({
-            id: f.id,
-            severity: f.severity as FindingPreview['severity'],
-            title: f.title,
-            file: f.file,
-            start_line: f.startLine,
-            confidence: f.confidence,
-            rationale:
-              f.rationale.length > RATIONALE_MAX
-                ? `${f.rationale.slice(0, RATIONALE_MAX - 1).trimEnd()}…`
-                : f.rationale,
-          }));
+          .map((f): FindingPreview => {
+            // `rationale` is NOT NULL in the schema, but guard defensively so a
+            // stray null can never 500 the whole PR-list endpoint.
+            const rationale = f.rationale ?? '';
+            return {
+              id: f.id,
+              severity: f.severity as FindingPreview['severity'],
+              title: f.title,
+              file: f.file,
+              start_line: f.startLine,
+              confidence: f.confidence,
+              rationale:
+                rationale.length > RATIONALE_MAX
+                  ? `${rationale.slice(0, RATIONALE_MAX - 1).trimEnd()}…`
+                  : rationale,
+            };
+          });
         previewByPr.set(prId, preview);
       }
     }

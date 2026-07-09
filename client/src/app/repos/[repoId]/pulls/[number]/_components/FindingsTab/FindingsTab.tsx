@@ -80,18 +80,29 @@ export function FindingsTab({
   // opens + scrolls to that run's accordion below. The nonce re-triggers the
   // scroll even when the same run is clicked twice.
   const [target, setTarget] = React.useState<{ runId: string; n: number } | null>(null);
-  const handleGoToReview = useCallback((runId: string) => {
+  const scrollToRun = useCallback((runId: string) => {
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
 
-  // A timeline counter chip both applies the severity filter and scrolls to the
-  // run's accordion below, so the filtered findings are immediately visible.
+  // Clicking a run (its agent name) opens that run fresh — so it clears any
+  // active severity filter, otherwise the panel below would still hide findings
+  // of other severities for the run you just navigated to.
+  const handleGoToReview = useCallback(
+    (runId: string) => {
+      onClearSeverity?.();
+      scrollToRun(runId);
+    },
+    [onClearSeverity, scrollToRun],
+  );
+
+  // A timeline counter chip is the opposite intent: apply that severity filter
+  // and scroll to the run so the filtered findings are immediately visible.
   const handleSelectSeverity = useCallback(
     (runId: string, sev: Severity) => {
       onSelectSeverity?.(sev);
-      handleGoToReview(runId);
+      scrollToRun(runId);
     },
-    [onSelectSeverity, handleGoToReview],
+    [onSelectSeverity, scrollToRun],
   );
 
   return (

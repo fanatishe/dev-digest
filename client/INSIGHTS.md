@@ -7,13 +7,17 @@ for the rubric.
 ## What Works
 <!-- Approaches, patterns, and solutions that proved effective. problem → what to do. -->
 
-- **Hover popover = JS state + popup rendered as a DOM descendant of the anchor.**
+- **Hover popover in a table MUST portal to `document.body` with `position:fixed`.**
   `vendor/ui/primitives/FindingsPopover.tsx` is the module's first real popover
-  (everything else used native `title`). Keep the popup element a *child* of the
-  wrapper that owns `onMouseEnter/Leave`, so moving the pointer onto the popup does
-  NOT fire `mouseleave` (descendants count as "inside" the wrapper); add a ~120ms
-  close delay to cover the anchor→popup gap, plus `onFocus/onBlur` for a11y. CSS-only
-  `:hover` can't survive pointer travel or drive click-to-filter state. (2026-07-09)
+  (everything else used native `title`). An absolutely-positioned popup gets clipped
+  by any `overflow:hidden` ancestor — the PR-list `tableCard` (`pulls/styles.ts`) has
+  it, so a downward popup was cut off. Fix: `createPortal` to `document.body`, compute
+  `fixed` coords from the anchor's `getBoundingClientRect()` in a `useLayoutEffect`,
+  flip above when `spaceBelow` is tight, and cap `maxHeight` to the viewport.
+  2026-07-09: supersedes the earlier "keep popup a DOM descendant" note below — the
+  portal breaks the parent/child link, so `mouseleave` DOES fire when moving onto the
+  popup; attach the show/hide handlers to BOTH the anchor wrapper and the portaled
+  popup, with a ~120ms close delay, to keep it open across the gap. (2026-07-09)
 
 ## What Doesn't Work
 <!-- Dead ends and antipatterns. The most valuable section — don't skip it. -->

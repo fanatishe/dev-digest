@@ -59,7 +59,13 @@ export default function PRDetailPage() {
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
-  const severity = (search.get("severity") as Severity | null) ?? null;
+  // Validate against the known set — the raw query param is attacker-controlled,
+  // and an unknown value would silently hide every finding (nothing matches).
+  const SEVERITIES = ["CRITICAL", "WARNING", "SUGGESTION"] as const;
+  const severityParam = search.get("severity");
+  const severity: Severity | null = SEVERITIES.includes(severityParam as never)
+    ? (severityParam as Severity)
+    : null;
   const setParam = (key: string, val: string | null) => {
     const sp = new URLSearchParams(search.toString());
     if (val == null) sp.delete(key);

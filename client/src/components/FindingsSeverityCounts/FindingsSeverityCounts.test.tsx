@@ -80,4 +80,19 @@ describe("FindingsSeverityCounts", () => {
     expect(screen.getByText("N+1 query in user list endpoint")).toBeInTheDocument();
     expect(screen.getByText(/2 findings/i)).toBeInTheDocument();
   });
+
+  it("clicking a finding row in the popup calls onSelectFinding with its id", () => {
+    const onSelectFinding = vi.fn();
+    const { container } = renderWithIntl(
+      <FindingsSeverityCounts
+        counts={{ CRITICAL: 1, WARNING: 1, SUGGESTION: 0 }}
+        preview={PREVIEW}
+        onSelectSeverity={() => {}}
+        onSelectFinding={onSelectFinding}
+      />,
+    );
+    fireEvent.mouseEnter(container.firstChild as Element);
+    fireEvent.click(screen.getByLabelText("Open finding: N+1 query in user list endpoint"));
+    expect(onSelectFinding).toHaveBeenCalledWith("f2");
+  });
 });

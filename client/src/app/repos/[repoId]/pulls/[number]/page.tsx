@@ -66,6 +66,8 @@ export default function PRDetailPage() {
   const severity: Severity | null = SEVERITIES.includes(severityParam as never)
     ? (severityParam as Severity)
     : null;
+  // Deep-link to a specific finding (from the PR-list popover) → reveal it below.
+  const finding = search.get("finding");
   const setParam = (key: string, val: string | null) => {
     const sp = new URLSearchParams(search.toString());
     if (val == null) sp.delete(key);
@@ -155,6 +157,7 @@ export default function PRDetailPage() {
             repoFullName={repoFullName}
             headSha={pr.head_sha}
             severity={severity}
+            targetFindingId={finding}
             onSelectSeverity={(sev) => setParam("severity", sev)}
             onClearSeverity={() => setParam("severity", null)}
             cancelMutation={cancel}

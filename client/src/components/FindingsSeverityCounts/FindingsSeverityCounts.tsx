@@ -28,11 +28,14 @@ export function FindingsSeverityCounts({
   counts,
   preview,
   onSelectSeverity,
+  onSelectFinding,
   align = "left",
 }: {
   counts: SeverityCounts | null | undefined;
   preview: PopoverFinding[] | null | undefined;
   onSelectSeverity: (severity: Severity) => void;
+  /** Click a specific finding in the popup (open it on the Agent-runs tab). */
+  onSelectFinding?: (id: string) => void;
   align?: "left" | "right";
 }) {
   const t = useTranslations("prReview");
@@ -81,6 +84,8 @@ export function FindingsSeverityCounts({
       header={t("counts.header", { count: total })}
       confidenceLabel={t("counts.confidence")}
       align={align}
+      onSelectFinding={onSelectFinding}
+      findingLabel={(title) => t("counts.openFinding", { title })}
     >
       {chips}
     </FindingsPopover>

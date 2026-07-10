@@ -25,6 +25,8 @@ interface FindingsTabProps {
   headSha?: string | null;
   /** Active severity filter (from `?severity=`), applied to every run's findings. */
   severity?: Severity | null;
+  /** A finding to reveal on load (from `?finding=`, e.g. deep-linked from the PR list). */
+  targetFindingId?: string | null;
   /** Set the severity filter — fired by a timeline counter chip. */
   onSelectSeverity?: (severity: Severity) => void;
   /** Clear the active severity filter. */
@@ -46,6 +48,7 @@ export function FindingsTab({
   repoFullName,
   headSha,
   severity,
+  targetFindingId,
   onSelectSeverity,
   onClearSeverity,
   onOpenTrace,
@@ -103,6 +106,22 @@ export function FindingsTab({
       scrollToRun(runId);
     },
     [onSelectSeverity, scrollToRun],
+  );
+
+  // "Reveal a finding": open its run's accordion + expand + scroll to the card.
+  // A nonce lets the same finding be re-revealed (re-clicked). The channel is fed
+  // from two sources: the `?finding=` URL param (deep-link from the PR list) and a
+  // click on a finding inside the timeline popover on this page.
+  const [reveal, setReveal] = React.useState<{ id: string; n: number } | null>(null);
+  React.useEffect(() => {
+    if (targetFindingId) setReveal((p) => ({ id: targetFindingId, n: (p?.n ?? 0) + 1 }));
+  }, [targetFindingId]);
+  const handleSelectFinding = useCallback(
+    (id: string) => {
+      onClearSeverity?.(); // never let an active severity filter hide the target
+      setReveal((p) => ({ id, n: (p?.n ?? 0) + 1 }));
+    },
+    [onClearSeverity],
   );
 
   return (
@@ -169,6 +188,7 @@ export function FindingsTab({
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onSelectSeverity={handleSelectSeverity}
+            onSelectFinding={handleSelectFinding}
             onDelete={handleDelete}
           />
         </div>
@@ -225,6 +245,8 @@ export function FindingsTab({
             severity={severity}
             targetRunId={target?.runId ?? null}
             targetNonce={target?.n ?? 0}
+            revealFindingId={reveal?.id ?? null}
+            revealNonce={reveal?.n ?? 0}
           />
         ))
       )}

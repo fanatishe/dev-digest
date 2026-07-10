@@ -62,6 +62,9 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
           onSelectSeverity={(sev: Severity) =>
             router.push(`/repos/${repoId}/pulls/${pr.number}?tab=findings&severity=${sev}`)
           }
+          onSelectFinding={(id: string) =>
+            router.push(`/repos/${repoId}/pulls/${pr.number}?tab=findings&finding=${id}`)
+          }
         />
       </div>
       <div>

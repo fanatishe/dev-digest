@@ -2,6 +2,7 @@
   "counts": {
     "header": "{count} findings",
     "filterBy": "Show only {severity} findings",
+    "openFinding": "Open finding: {title}",
     "confidence": "conf",
     "none": "No findings"
   },

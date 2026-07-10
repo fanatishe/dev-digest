@@ -25,6 +25,17 @@ for the rubric.
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
 
+- **"Reveal a child by nonce" — to expand/scroll to a component that owns its own
+  state.** A bare id or URL param can't re-trigger for the *same* value (re-clicking
+  the same finding). Pattern: parent holds `{ id, n }` state, bumps `n` on every
+  request; the child effect keys on `[revealNonce, id]` and acts. Used by the
+  Agent-runs tab twice: run-scroll (`ReviewRunAccordion` `targetRunId/targetNonce`)
+  and finding-reveal (`FindingsTab` → accordion → `FindingsPanel` → `FindingCard.reveal`
+  → `setExpanded(true)` + `scrollIntoView`). When the target may be hidden by a filter,
+  force-include it (`FindingsPanel` re-adds the revealed finding even under a severity
+  filter / hide-low). In tests, stub `Element.prototype.scrollIntoView = vi.fn()` —
+  jsdom doesn't implement it and the reveal effect will throw otherwise. (2026-07-10)
+
 - **A PR-list column spans four coordinated edits.** The table is CSS-grid driven:
   add the track to `GRID` and the key to `COLUMN_KEYS` (`pulls/constants.ts`), render
   the cell in `PRRow.tsx`, and add the `list.columns.<key>` string in
@@ -49,6 +60,12 @@ for the rubric.
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-10
+Made popover finding-rows clickable → open that finding on the Agent-runs tab
+(expand + scroll). PR-list path deep-links via `?finding=<id>`; timeline path reveals
+in-place and clears the severity filter. Reused the run-scroll nonce pattern at card
+granularity; `FindingCard` gained a `reveal` nonce prop.
 
 ### 2026-07-09
 Added findings-severity counters + hover popover + `?severity=` filter to the PR list

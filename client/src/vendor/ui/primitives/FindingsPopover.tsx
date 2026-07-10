@@ -46,6 +46,8 @@ export function FindingsPopover({
   header,
   confidenceLabel = "conf",
   align = "left",
+  onSelectFinding,
+  findingLabel,
 }: {
   children: React.ReactNode;
   findings: PopoverFinding[];
@@ -54,6 +56,10 @@ export function FindingsPopover({
   /** Suffix after the confidence percentage, e.g. "conf". */
   confidenceLabel?: string;
   align?: "left" | "right";
+  /** When set, each finding row is clickable and calls this with the finding id. */
+  onSelectFinding?: (id: string) => void;
+  /** Builds the aria-label for a clickable row (i18n resolved by the caller). */
+  findingLabel?: (title: string) => string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [pos, setPos] = React.useState<Pos | null>(null);
@@ -126,8 +132,44 @@ export function FindingsPopover({
                 const pct = Math.round(f.confidence * 100);
                 const confColor =
                   pct >= 85 ? "var(--ok)" : pct >= 65 ? "var(--warn)" : "var(--text-muted)";
+                const clickable = !!onSelectFinding;
+                const select = (e: React.SyntheticEvent) => {
+                  // Portals bubble events through the React tree, so stop it here
+                  // or the underlying PR row's onClick would also fire.
+                  e.stopPropagation();
+                  onSelectFinding?.(f.id);
+                  setOpen(false);
+                };
                 return (
-                  <div key={f.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div
+                    key={f.id}
+                    role={clickable ? "button" : undefined}
+                    tabIndex={clickable ? 0 : undefined}
+                    aria-label={clickable ? findingLabel?.(f.title) : undefined}
+                    onClick={clickable ? select : undefined}
+                    onKeyDown={
+                      clickable
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") select(e);
+                          }
+                        : undefined
+                    }
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      cursor: clickable ? "pointer" : "default",
+                      borderRadius: 6,
+                      margin: "0 -6px",
+                      padding: "2px 6px",
+                    }}
+                    onMouseEnter={
+                      clickable ? (e) => (e.currentTarget.style.background = "var(--bg-hover)") : undefined
+                    }
+                    onMouseLeave={
+                      clickable ? (e) => (e.currentTarget.style.background = "transparent") : undefined
+                    }
+                  >
                     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                       <I size={13} style={{ color: sev.c, flexShrink: 0 }} />
                       <span style={titleStyle}>{f.title}</span>

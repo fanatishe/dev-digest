@@ -94,6 +94,7 @@ export function RunHistory({
   onOpenTrace,
   onGoToReview,
   onSelectSeverity,
+  onSelectFinding,
   onDelete,
 }: {
   runs: RunSummary[];
@@ -106,6 +107,8 @@ export function RunHistory({
   onGoToReview?: (runId: string) => void;
   /** Drill into a single severity of a run's findings (clicking a counter chip). */
   onSelectSeverity?: (runId: string, severity: Severity) => void;
+  /** Open a specific finding from the run's hover popover. */
+  onSelectFinding?: (id: string) => void;
   onDelete?: (runId: string) => void;
 }) {
   const t = useTranslations("prReview");
@@ -205,6 +208,7 @@ export function RunHistory({
                       counts={rf.counts}
                       preview={rf.preview}
                       onSelectSeverity={(sev) => onSelectSeverity?.(r.run_id, sev)}
+                      onSelectFinding={onSelectFinding}
                     />
                   ) : (
                     t("runStatus.findings", { count: r.findings_count ?? 0 })

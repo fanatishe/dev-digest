@@ -8,6 +8,7 @@ import { type ShellContext } from "@devdigest/ui";
 import { useTheme } from "../../../lib/theme";
 import { useActiveRepo } from "../../../lib/repo-context";
 import { usePulls, useDeleteRepo } from "../../../lib/hooks";
+import { useConfirm } from "../../../lib/confirm";
 import { activeKeyFor, toShellRepo } from "../helpers";
 
 interface ShellContextOptions {
@@ -27,6 +28,7 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
   const { repoId, repos, activeRepo, setRepoId } = useActiveRepo();
   const { data: pulls } = usePulls(repoId);
   const deleteRepo = useDeleteRepo();
+  const confirm = useConfirm();
 
   const onSelectRepo = React.useCallback(
     (id: string) => {
@@ -39,11 +41,15 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
   const onAddRepo = React.useCallback(() => router.push("/onboarding"), [router]);
 
   const onRemoveRepo = React.useCallback(
-    (id: string) => {
+    async (id: string) => {
       const target = repos.find((r) => r.id === id);
-      const ok = window.confirm(
-        t("removeRepo.confirm", { name: target?.full_name ?? t("removeRepo.fallbackName") }),
-      );
+      const name = target?.full_name ?? t("removeRepo.fallbackName");
+      const ok = await confirm({
+        title: t("removeRepo.title", { name }),
+        message: t("removeRepo.body"),
+        confirmLabel: t("removeRepo.cta"),
+        danger: true,
+      });
       if (!ok) return;
       deleteRepo.mutate(id, {
         onSuccess: () => {
@@ -54,7 +60,7 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
         },
       });
     },
-    [repos, repoId, t, deleteRepo, router],
+    [repos, repoId, t, confirm, deleteRepo, router],
   );
 
   return React.useMemo<ShellContext>(

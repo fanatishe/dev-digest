@@ -19,6 +19,21 @@ for the rubric.
   popup; attach the show/hide handlers to BOTH the anchor wrapper and the portaled
   popup, with a ~120ms close delay, to keep it open across the gap. (2026-07-09)
 
+- **Route error boundaries split by whether the next-intl provider survives.**
+  `app/error.tsx` and `app/not-found.tsx` render INSIDE the root layout, so the
+  design-system CSS + locale are present — use `useTranslations`/`getTranslations`
+  and design tokens there. `app/global-error.tsx` REPLACES the root layout when the
+  layout itself throws, so it has NO provider and NO CSS: it must render its own
+  `<html>/<body>`, use literal copy, and inline all styles. Don't reach for `t()` or
+  `var(--…)` in global-error — they won't resolve. (2026-07-10)
+
+- **A modal's focus-trap/Escape effect must run ONCE on mount (`deps: []`), reading
+  `onClose` via a ref.** `vendor/ui/kit/Modal.tsx` keeps `onCloseRef.current = onClose`
+  each render and the effect depends on `[]`. Keying the effect on `[onClose]` re-runs
+  it on every parent render (onClose is usually an inline arrow), which re-focuses the
+  dialog and steals focus mid-typing. Store previously-focused element on mount, restore
+  it on unmount. (2026-07-10)
+
 ## What Doesn't Work
 <!-- Dead ends and antipatterns. The most valuable section — don't skip it. -->
 
@@ -45,6 +60,38 @@ for the rubric.
   present value (inherits the cell) and forcing `--text-muted` only on the empty dash.
   Hard-coding `--text` made it clash with the muted timeline row. (2026-07-09)
 
+- **Destructive confirms go through the promise-based `useConfirm()` (`lib/confirm.tsx`),
+  never `window.confirm`.** `<ConfirmProvider>` (mounted in `lib/providers.tsx` under
+  RepoProvider) renders a single `<ConfirmDialog>` and `useConfirm()` returns
+  `(opts) => Promise<boolean>`, so call sites read `if (await confirm({ title, message,
+  danger: true })) mutate()`. It works from hooks too — `useShellContext.onRemoveRepo`
+  became `async` and awaits it. Accessible (focus-trapped Modal + Escape) and testable,
+  unlike the native blocking dialog. (2026-07-10)
+
+- **Reset a colocated form on identity change with `key={agent.id}`, not a prop→state
+  sync effect.** `AgentEditor` renders `<ConfigTab key={agent.id} agent={agent} />`; the
+  remount re-runs ConfigTab's `useState` initializers. This replaced a 9-`setState`
+  `useEffect([agent.id])` (a "you-might-not-need-an-effect" case) and its
+  `eslint-disable`. Regression test asserts a local edit doesn't leak across an agent
+  switch. (2026-07-10)
+
+- **All query hooks forward React Query's `AbortSignal` to fetch.** `api.get(path, signal?)`
+  passes it into `apiFetch`; queryFns are `({ signal }) => api.get(path, signal)` so
+  navigating away / refetching cancels the in-flight request. Mutations don't take a
+  signal. (2026-07-10)
+
+- **Per-route tab titles need a SERVER page — a `"use client"` page can't export
+  `metadata`/`generateMetadata`.** Root `layout.tsx` sets
+  `title: { default: "DevDigest", template: "%s · DevDigest" }`, so a route only sets a
+  short `title` ("Agents") and it renders "Agents · DevDigest". Pattern for the pilot:
+  keep `page.tsx` a thin Server Component that renders a colocated client `*View`; add
+  static `metadata` (e.g. `/agents`) or async `generateMetadata({ params })` (Next 15:
+  `params` is a Promise — `await` it; see `/settings/[section]`). Pages that hold client
+  hooks in the page BODY (`/agents/[id]`, `/repos/**/pulls`, `pulls/[number]`, `/`) must
+  first have that body extracted into a client `*View` before they can earn a title —
+  larger follow-up. Dropping a redundant page-level `"use client"` (as on `/onboarding`,
+  a pure wrapper) also makes it statically prerenderable → smaller first-load JS. (2026-07-10)
+
 ## Tool & Library Notes
 <!-- Quirks and gotchas of dependencies/tooling. -->
 
@@ -58,8 +105,44 @@ for the rubric.
 ## Recurring Errors & Fixes
 <!-- An error seen more than once + its fix. -->
 
+- **Threading React Query's `AbortSignal` into `fetch` requires letting `AbortError`
+  propagate — don't wrap it as a network error.** `apiFetch`'s `catch` originally turned
+  EVERY fetch rejection into `ApiError(status 0, "network_error")`. Once the query signal
+  is passed to `fetch`, a cancelled request (refetch / `refetchOnWindowFocus` / navigation
+  — `usePulls` does all three) rejects with a `DOMException` `AbortError`, which then got
+  mislabeled as "Cannot reach the DevDigest engine" and fired the global `status === 0`
+  error toast on ordinary navigation. Fix: `if (e instanceof DOMException && e.name ===
+  "AbortError") throw e;` before the network-error wrap, so the query layer sees a
+  cancellation, not a failure. (2026-07-10)
+
+- **`useConfirm must be used within <ConfirmProvider>` in component tests.** Any
+  component that (even indirectly) calls `useConfirm` — e.g. `AgentCard`'s delete button —
+  throws when rendered bare. Wrap the test tree in `<ConfirmProvider>` alongside the
+  existing intl/query/toast providers (see `AgentCard.test.tsx`'s `renderWithIntl`). Same
+  class of failure as a missing `ToastProvider`. (2026-07-10)
+
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-10 (frontend hardening)
+Acted on a React/Next best-practices audit of `client/`. Added route boundaries
+(`error.tsx`, `global-error.tsx`, `not-found.tsx`); replaced all 4 `window.confirm`
+calls with an accessible promise-based `useConfirm()` + `ConfirmDialog`; gave `Modal`
+focus-trap/Escape/`aria-labelledby`; swapped ConfigTab's reset-effect for
+`key={agent.id}`; threaded `AbortSignal` through every query hook (+ fixed the
+abort-masquerade bug); fixed filterable-list keys (`DiffViewer`→`path`, specs→string).
+Next.js audit verdict: mostly covered (client-hook params, layout `<Suspense>`
+legitimizes `useSearchParams`, no img/font concerns); the real gap is per-route metadata
+(blocked by client-component pages). RSC/metadata pilot: title template in root layout +
+static/`generateMetadata` on `/agents`, `/settings/[section]`, `/onboarding`, and
+extracted `/agents/[id]` and `/repos/**/pulls/[number]` bodies into
+`_components/AgentDetailView` / `_components/PrDetailView` so both pages are thin Server
+Components with metadata — the PR page derives a dynamic title ("PR #123") straight from
+the route param, no fetch. #8 splits: `FindingsTab` 255→191 (LiveReviewBanner /
+ReviewNotices / ReviewRunsHeader), `RunHistory` 255→82 (RunRow / CommitRow), `PrDetailView`
+203→195 (parseSeverity → helpers.ts, PrDetailSkeleton). Every feature component is now
+≤200 lines; only the dev-only `Showcase` gallery remains larger. Typecheck + build + 37
+tests green throughout.
 
 ### 2026-07-10
 Made popover finding-rows clickable → open that finding on the Agent-runs tab

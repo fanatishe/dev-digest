@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Agent } from "@devdigest/shared";
 import messages from "../../../../../messages/en/agents.json";
+import { ConfirmProvider } from "@/lib/confirm";
 import { AgentCard } from "./AgentCard";
 
 afterEach(cleanup);
@@ -28,7 +29,7 @@ function renderWithIntl(ui: React.ReactElement) {
   return render(
     <QueryClientProvider client={qc}>
       <NextIntlClientProvider locale="en" messages={{ agents: messages }}>
-        {ui}
+        <ConfirmProvider>{ui}</ConfirmProvider>
       </NextIntlClientProvider>
     </QueryClientProvider>,
   );

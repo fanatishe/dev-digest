@@ -28,7 +28,7 @@ export interface ActiveRun {
 export function usePrActiveRuns(prId: string | null | undefined) {
   return useQuery({
     queryKey: ["pr-active-runs", prId],
-    queryFn: () => api.get<ActiveRun[]>(`/pulls/${prId}/runs/active`),
+    queryFn: ({ signal }) => api.get<ActiveRun[]>(`/pulls/${prId}/runs/active`, signal),
     enabled: !!prId,
     refetchInterval: (query) => ((query.state.data?.length ?? 0) > 0 ? 4000 : false),
   });
@@ -40,7 +40,7 @@ export function usePrActiveRuns(prId: string | null | undefined) {
 export function usePrRuns(prId: string | null | undefined) {
   return useQuery({
     queryKey: ["pr-runs", prId],
-    queryFn: () => api.get<RunSummary[]>(`/pulls/${prId}/runs`),
+    queryFn: ({ signal }) => api.get<RunSummary[]>(`/pulls/${prId}/runs`, signal),
     enabled: !!prId,
     refetchInterval: (query) =>
       (query.state.data ?? []).some((r) => r.status === "running") ? 4000 : false,
@@ -51,7 +51,7 @@ export function usePrRuns(prId: string | null | undefined) {
 export function usePrReviews(prId: string | null | undefined) {
   return useQuery({
     queryKey: ["reviews", prId],
-    queryFn: () => api.get<ReviewRecord[]>(`/pulls/${prId}/reviews`),
+    queryFn: ({ signal }) => api.get<ReviewRecord[]>(`/pulls/${prId}/reviews`, signal),
     enabled: !!prId,
   });
 }
@@ -91,7 +91,7 @@ export function useDeleteReview(prId: string | null | undefined) {
 export function usePrComments(prId: string | null | undefined) {
   return useQuery({
     queryKey: ["pr-comments", prId],
-    queryFn: () => api.get<PrReviewComment[]>(`/pulls/${prId}/comments`),
+    queryFn: ({ signal }) => api.get<PrReviewComment[]>(`/pulls/${prId}/comments`, signal),
     enabled: !!prId,
   });
 }

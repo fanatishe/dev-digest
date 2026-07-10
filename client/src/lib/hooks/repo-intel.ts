@@ -31,7 +31,7 @@ export interface RepoIntelState {
 export function useRepoIntelStatus(repoId: string | null | undefined, poll = false) {
   return useQuery({
     queryKey: ["repo-intel-state", repoId],
-    queryFn: () => api.get<RepoIntelState>(`/repos/${repoId}/index-state`),
+    queryFn: ({ signal }) => api.get<RepoIntelState>(`/repos/${repoId}/index-state`, signal),
     enabled: !!repoId,
     refetchInterval: poll ? 1500 : false,
   });

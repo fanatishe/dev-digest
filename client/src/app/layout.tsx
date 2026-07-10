@@ -7,7 +7,9 @@ import { Providers } from "../lib/providers";
 import { themeNoFlashScript } from "../lib/theme";
 
 export const metadata: Metadata = {
-  title: "DevDigest",
+  // `template` lets each route set a short `title` (e.g. "Agents") that renders
+  // as "Agents · DevDigest"; routes without one fall back to `default`.
+  title: { default: "DevDigest", template: "%s · DevDigest" },
   description: "Local-first AI PR review tool",
 };
 

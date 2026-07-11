@@ -632,6 +632,18 @@ export class RepoIntelService implements RepoIntel {
   }
 
   /**
+   * UTF-8 content of one file in the repo's clone, or null when the repo is
+   * unindexed / has no clone / the file is missing. Used by the conventions
+   * extractor to read sample + config files for grounding — the clone is owned
+   * by repo-intel, so file reads go through this facade rather than raw fs.
+   */
+  async getFileContent(repoId: string, path: string): Promise<string | null> {
+    const repo = await this.repo.getRepoBasics(repoId);
+    if (!repo?.clonePath) return null;
+    return readClone(repo.clonePath, path);
+  }
+
+  /**
    * Top-N file paths by rank DESC, dropping tests/configs/migrations and any
    * caller-supplied `exclude` substrings. Over-fetches by 10× before filtering
    * so the post-filter still yields N where possible.

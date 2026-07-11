@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useCallback } from "react";
-import { Icon, Badge, Button, SectionLabel, EmptyState, SEV } from "@devdigest/ui";
-import { RunStatus } from "../RunStatus";
+import { SectionLabel, EmptyState } from "@devdigest/ui";
 import { RunHistory } from "../RunHistory/RunHistory";
 import { findingsByRun } from "../RunHistory/helpers";
 import { ReviewRunAccordion } from "../ReviewRunAccordion";
+import { LiveReviewBanner } from "./_components/LiveReviewBanner";
+import { ReviewNotices } from "./_components/ReviewNotices";
+import { ReviewRunsHeader } from "./_components/ReviewRunsHeader";
 import { s } from "./styles";
 import type { Severity } from "@devdigest/ui";
 import type { FindingRecord, ReviewRecord, RunSummary, PrCommit } from "@devdigest/shared";
@@ -126,52 +128,15 @@ export function FindingsTab({
 
   return (
     <section>
-      {liveRunIds.length > 0 && (
-        <div style={s.liveRunSection}>
-          <SectionLabel
-            icon="Sparkles"
-            right={
-              <div style={s.cancelActions}>
-                <Button
-                  kind="danger"
-                  size="sm"
-                  icon="X"
-                  loading={cancelMutation.isPending}
-                  onClick={handleCancelAll}
-                >
-                  Cancel
-                </Button>
-                <Button kind="ghost" size="sm" icon="FileText" onClick={handleOpenFirstTrace}>
-                  Open run trace
-                </Button>
-              </div>
-            }
-          >
-            Live review
-          </SectionLabel>
-          <RunStatus runIds={liveRunIds} onDone={onRunDone} />
-        </div>
-      )}
+      <LiveReviewBanner
+        liveRunIds={liveRunIds}
+        cancelPending={cancelMutation.isPending}
+        onCancelAll={handleCancelAll}
+        onOpenFirstTrace={handleOpenFirstTrace}
+        onRunDone={onRunDone}
+      />
 
-      {reviewRunning && (
-        <div style={s.reviewInProgress}>
-          <Icon.RefreshCw size={16} style={{ color: "var(--accent)", animation: "ddspin 1s linear infinite" }} />
-          <span style={s.reviewInProgressText}>Review in progress…</span>
-          <span style={s.reviewInProgressSub}>
-            the agent is analyzing the diff — this can take a while on large PRs.
-          </span>
-        </div>
-      )}
-
-      {lethalTrifecta.length > 0 && (
-        <div style={s.lethalTrifecta}>
-          <Icon.Shield size={16} style={{ color: "var(--crit)" }} />
-          <span style={s.lethalTrifectaTitle}>Lethal Trifecta detected</span>
-          <Badge color="var(--crit)" bg="transparent">
-            {lethalTrifecta.length} finding(s)
-          </Badge>
-        </div>
-      )}
+      <ReviewNotices reviewRunning={reviewRunning} lethalCount={lethalTrifecta.length} />
 
       {((prRuns && prRuns.length > 0) || prCommits.length > 0) && (
         <div style={s.timelineSection}>
@@ -194,36 +159,7 @@ export function FindingsTab({
         </div>
       )}
 
-      <SectionLabel
-        icon="AlertOctagon"
-        right={
-          severity ? (
-            <button
-              type="button"
-              onClick={onClearSeverity}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: "none",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                padding: "2px 8px",
-                fontSize: 12,
-                color: SEV[severity]?.c ?? "var(--text-secondary)",
-                cursor: "pointer",
-              }}
-            >
-              {SEV[severity]?.label ?? severity} only
-              <Icon.X size={12} />
-            </button>
-          ) : (
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>grouped by run · newest first</span>
-          )
-        }
-      >
-        Review runs
-      </SectionLabel>
+      <ReviewRunsHeader severity={severity} onClearSeverity={onClearSeverity} />
       {runs.length === 0 ? (
         reviewRunning || liveRunIds.length > 0 ? null : (
           <EmptyState

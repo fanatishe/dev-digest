@@ -42,7 +42,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
                 <span style={s.specsNone}>{t("trace.config.none")}</span>
               ) : (
                 trace.specs_read.map((sp, i) => (
-                  <span key={i} className="mono" style={s.spec}>
+                  <span key={`${sp}-${i}`} className="mono" style={s.spec}>
                     {sp}
                   </span>
                 ))
@@ -90,6 +90,25 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
         )}
         <PromptBlock label={t("trace.prompt.user")} text={trace.prompt_assembly.user} color={PROMPT_COLORS.user} />
       </TraceSection>
+
+      {trace.config.skills != null && trace.config.skills.length > 0 && (
+        <TraceSection
+          icon="FileText"
+          title={t("trace.skillDynamics")}
+          right={<Badge color="var(--text-muted)">{trace.config.skills.length}</Badge>}
+          defaultOpen={false}
+        >
+          <div style={s.skillDynamicsSubtitle}>{t("trace.skillDynamicsSubtitle")}</div>
+          {trace.config.skills.map((sk) => (
+            <PromptBlock
+              key={sk.id}
+              label={`${sk.name} · ${t("trace.skillVersion", { version: sk.version })}`}
+              text={sk.body}
+              color={PROMPT_COLORS.skills}
+            />
+          ))}
+        </TraceSection>
+      )}
 
       <TraceSection
         icon="Wrench"

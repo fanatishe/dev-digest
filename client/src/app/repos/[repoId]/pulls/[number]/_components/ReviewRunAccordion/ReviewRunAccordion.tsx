@@ -11,6 +11,7 @@ import type { ReviewRecord, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
+import { useConfirm } from "@/lib/confirm";
 
 const VERDICT_COLOR: Record<string, string> = {
   request_changes: "var(--crit)",
@@ -69,6 +70,7 @@ export function ReviewRunAccordion({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealFindingId, revealNonce, review.id]);
   const del = useDeleteReview(prId);
+  const confirm = useConfirm();
   const findings = review.findings;
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
   const verdictColor = review.verdict ? VERDICT_COLOR[review.verdict] ?? "var(--text-muted)" : "var(--text-muted)";
@@ -124,11 +126,15 @@ export function ReviewRunAccordion({
           {formatWhen(review.created_at)}
         </span>
         <button
-          onClick={(e) => {
+          onClick={async (e) => {
             e.stopPropagation();
-            if (window.confirm(`Delete this "${review.agent_name ?? "agent"}" review run and its findings?`)) {
-              del.mutate(review.id);
-            }
+            const ok = await confirm({
+              title: "Delete review run?",
+              message: `Delete this "${review.agent_name ?? "agent"}" review run and its findings?`,
+              confirmLabel: "Delete",
+              danger: true,
+            });
+            if (ok) del.mutate(review.id);
           }}
           disabled={del.isPending}
           title="Delete this review run"

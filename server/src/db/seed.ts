@@ -6,7 +6,12 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
+  API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { SkillsRepository } from '../modules/skills/repository.js';
+import { AgentsRepository } from '../modules/agents/repository.js';
+import type { SkillSource, SkillType } from '@devdigest/shared';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -18,8 +23,9 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  *
  * Seeds: default workspace + system user + membership, default settings,
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings, and the three built-in agents (General + Security +
- * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
+ * with a few findings, the built-in reviewer agents (General, Security,
+ * Performance, Test Quality, API Contract) — all on the default
+ * openrouter/deepseek-v4-flash provider+model — plus each agent's linked skills.
  *
  * Course lessons populate the other tables (skills, conventions, memory, eval,
  * …) once their features are built — they start empty here.
@@ -218,6 +224,221 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
+  }
+
+  // ---- Skills + the Test Quality Reviewer agent -------------------------------
+  // A reusable skill is text + config appended to an agent's prompt at review
+  // time. We seed four and attach them to a new agent so the control experiment
+  // (a happy-path-only test PR: flagged WITH skills, missed without) reproduces.
+  // One skill carries source='extracted' to represent the import path end-to-end.
+  const skillsRepo = new SkillsRepository(db);
+  const agentsRepo = new AgentsRepository(db);
+
+  const seedSkills: Array<{
+    name: string;
+    description: string;
+    type: SkillType;
+    source: SkillSource;
+    body: string;
+  }> = [
+    {
+      name: 'branch-coverage-nudge',
+      description:
+        'Flag any production branch introduced by the diff that no test in the diff exercises.',
+      type: 'rubric',
+      source: 'manual',
+      body: `# Branch coverage
+For every \`if\`/\`else\`, \`try\`/\`catch\`, guard clause, switch case, early return and
+\`??\`/\`||\` fallback added or changed in this diff, confirm a test drives an input that
+reaches it AND asserts a result that would fail if the branch broke. Name the exact
+uncovered branch and the input that reaches it. The happy path being green is not
+coverage of the error path.`,
+    },
+    {
+      name: 'no-over-mocking',
+      description:
+        'Reject tests that mock the unit under test or only assert that a mock was called.',
+      type: 'convention',
+      source: 'manual',
+      body: `# No over-mocking
+A test must assert on the observable result of the real unit, not on the fact that a
+test double was invoked. Flag: mocking the very function under test; mocking so much
+that the assertion only proves the mock works; asserting \`spy.calledWith(...)\` where
+asserting the returned value/state would actually pin the behaviour.`,
+    },
+    {
+      name: 'flake-smells',
+      description: 'Detect non-deterministic test patterns that cause flakes.',
+      type: 'custom',
+      source: 'manual',
+      body: `# Flake smells
+Flag tests that depend on real time / \`Date.now()\` / timers without fake timers,
+\`sleep\`-based waits, ordering of unordered data, unseeded randomness, real
+network/filesystem/shared-DB access without isolation, or state leaked between tests
+(shared mutable module state, missing cleanup).`,
+    },
+    {
+      // Represents a skill brought in via the import path (extract-only, from an
+      // uploaded markdown/zip). Enabled here so the seeded experiment runs.
+      name: 'corner-case-checklist',
+      description: 'Enumerate the corner cases a change to input-handling code must test.',
+      type: 'rubric',
+      source: 'extracted',
+      body: `# Corner cases
+For input-handling code, require tests for: empty / null / undefined / zero inputs;
+empty collections; the first and last element; boundary and off-by-one edges;
+duplicate and out-of-order inputs; and the error/rejection path with the exact error
+shape callers depend on. Missing any reachable case for changed behaviour is a gap.`,
+    },
+  ];
+
+  const skillIds: string[] = [];
+  for (const s of seedSkills) {
+    const existing = (await skillsRepo.list(workspaceId)).find((x) => x.name === s.name);
+    const id = existing?.id ?? (await skillsRepo.insert({ workspaceId, ...s, enabled: true })).id;
+    skillIds.push(id);
+  }
+
+  const testQualityAgent: typeof t.agents.$inferInsert = {
+    workspaceId,
+    name: 'Test Quality Reviewer',
+    description: 'Checks test quality: uncovered branches, missed corner cases, over-mocking, flakes.',
+    provider: DEFAULT_PROVIDER,
+    model: DEFAULT_MODEL,
+    systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+    enabled: true,
+    version: 1,
+    createdBy: userId,
+  };
+  let [tqAgent] = await db
+    .select()
+    .from(t.agents)
+    .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, testQualityAgent.name)));
+  if (!tqAgent) {
+    [tqAgent] = await db.insert(t.agents).values(testQualityAgent).returning();
+  }
+  // Attach the skills in order (idempotent upsert of each link).
+  for (let i = 0; i < skillIds.length; i++) {
+    await agentsRepo.linkSkill(tqAgent!.id, skillIds[i]!, i);
+  }
+
+  // ---- Skills + the API Contract Reviewer agent --------------------------------
+  // A reviewer specialised in public-API compatibility, with four contract-focused
+  // skills (breaking changes, response-schema, semver, deprecation). Same seed
+  // shape as above: insert-if-missing skills, insert-if-missing agent, link in order.
+  const apiContractSkills: Array<{
+    name: string;
+    description: string;
+    type: SkillType;
+    source: SkillSource;
+    body: string;
+  }> = [
+    {
+      name: 'breaking-change',
+      description:
+        'Detects removal or renaming of public API contracts without a version bump.',
+      type: 'security',
+      source: 'manual',
+      body: `# Breaking Change Gate
+Flag any diff that removes, renames, or changes the type of a public API element
+without a version bump.
+
+Flag as CRITICAL if the diff:
+- Removes a public endpoint without a prior deprecation notice.
+- Renames a field in a request or response body.
+- Changes a field from optional to required.
+- Changes a field's type (string → number, array → object).
+- Removes a query or path parameter.
+
+Safe (additive):   type UserResponse = { id: string; name: string; email?: string }
+Breaking (removal): type UserResponse = { id: string }  // removed name and email
+
+Cite file:line and explain what downstream callers will break.`,
+    },
+    {
+      name: 'response-schema',
+      description: 'Enforces backwards-compatible response-schema changes only.',
+      type: 'convention',
+      source: 'manual',
+      body: `# Response Schema Discipline
+Enforce that response schemas only change in backwards-compatible ways.
+
+Allowed without a version bump:
+- Adding new OPTIONAL fields to a response.
+- Making a required field optional (wider).
+
+NOT allowed without a version bump — flag as WARNING:
+- Removing existing fields from a response.
+- Making an optional field required (narrower).
+- Changing a field's type.
+- Changing a field from nullable to non-nullable.
+
+Check TypeScript interface/type changes under src/api/, src/routes/, or any file
+exporting a response schema.`,
+    },
+    {
+      name: 'semver-discipline',
+      description:
+        'Flags breaking API changes without a corresponding major version bump.',
+      type: 'convention',
+      source: 'manual',
+      body: `# SemVer Discipline
+Flag when a breaking API change is merged without a major version bump.
+
+- MAJOR bump required: any breaking change to a public endpoint, removal of an
+  endpoint, or a change in the auth scheme.
+- MINOR bump sufficient: new optional endpoints or fields.
+- PATCH sufficient: bug fixes that don't change API shape.
+
+Look for changes to the package.json version field, openapi.yaml, or API-version
+constants. A breaking change with no major bump is a WARNING.`,
+    },
+    {
+      name: 'deprecation-policy',
+      description:
+        'Enforces a deprecate-first policy before removing any public API element.',
+      type: 'convention',
+      source: 'manual',
+      body: `# Deprecation Policy
+Never silently remove a public API element. Deprecate first, then remove in a future
+major version. Correct cycle: v1.x adds an @deprecated marker + runtime warning →
+v2.0 removes it.
+
+Flag as WARNING if the diff:
+- Removes an endpoint without a prior @deprecated marker in the codebase.
+- Removes a field without documenting the removal in the CHANGELOG.
+- Deletes a route handler without a redirect or a 410 Gone response.`,
+    },
+  ];
+
+  const apiSkillIds: string[] = [];
+  for (const s of apiContractSkills) {
+    const existing = (await skillsRepo.list(workspaceId)).find((x) => x.name === s.name);
+    const id = existing?.id ?? (await skillsRepo.insert({ workspaceId, ...s, enabled: true })).id;
+    apiSkillIds.push(id);
+  }
+
+  const apiContractAgent: typeof t.agents.$inferInsert = {
+    workspaceId,
+    name: 'API Contract Reviewer',
+    description:
+      'Detects breaking API changes, schema violations, and versioning issues before merge.',
+    provider: DEFAULT_PROVIDER,
+    model: DEFAULT_MODEL,
+    systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+    enabled: true,
+    version: 1,
+    createdBy: userId,
+  };
+  let [apiAgent] = await db
+    .select()
+    .from(t.agents)
+    .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, apiContractAgent.name)));
+  if (!apiAgent) {
+    [apiAgent] = await db.insert(t.agents).values(apiContractAgent).returning();
+  }
+  for (let i = 0; i < apiSkillIds.length; i++) {
+    await agentsRepo.linkSkill(apiAgent!.id, apiSkillIds[i]!, i);
   }
 
   return { workspaceId, userId };

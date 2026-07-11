@@ -6,9 +6,11 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 
 | Skill | Scope | Description |
 |-------|-------|-------------|
+| [onion-architecture](onion-architecture/SKILL.md) | Backend | Onion/ports-and-adapters layering for `server` + `reviewer-core` — where code goes, the dependency-inward rule, tool-per-layer, dependency-cruiser enforcement |
 | [fastify-best-practices](fastify-best-practices/SKILL.md) | Backend | Fastify routes, plugins, JSON-schema validation, error handling |
 | [drizzle-orm-patterns](drizzle-orm-patterns/SKILL.md) | Backend | Drizzle schema, queries, relations, transactions, migrations |
 | [postgresql-table-design](postgresql-table-design/SKILL.md) | Backend | Postgres schema design, data types, indexing, constraints |
+| [frontend-ui-architecture](frontend-ui-architecture/SKILL.md) | Frontend | Code structure & organization — folder layout, thin pages, colocation, where constants/helpers/styles/logic/hooks live |
 | [next-best-practices](next-best-practices/SKILL.md) | Frontend | Next.js App Router, RSC boundaries, data fetching, optimization |
 | [react-best-practices](react-best-practices/SKILL.md) | Frontend | React anti-patterns, state management, hooks rules |
 | [react-testing-library](react-testing-library/SKILL.md) | Frontend | General-purpose React Testing Library guide with Vitest |
@@ -17,6 +19,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [engineering-insights](engineering-insights/SKILL.md) | Meta | Per-module capture-learnings loop — read `<module>/INSIGHTS.md` at session start, append significant learnings at session end |
+| [pr-self-review](pr-self-review/SKILL.md) | Meta | Local pre-PR gate — diff vs main, route changed files to the domain skills, run deterministic checks (onion/typecheck/tests/secrets/schema), BLOCK the PR on a critical finding |
 
 ## What Are Skills?
 

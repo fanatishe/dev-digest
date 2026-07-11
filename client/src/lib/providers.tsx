@@ -11,6 +11,7 @@ import {
 import { ThemeProvider } from "./theme";
 import { RepoProvider } from "./repo-context";
 import { ToastProvider, notify } from "./toast";
+import { ConfirmProvider } from "./confirm";
 import { ApiError } from "./api";
 
 function errorMessage(e: unknown): string {
@@ -47,7 +48,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={qc}>
       <ThemeProvider>
         <ToastProvider>
-          <RepoProvider>{children}</RepoProvider>
+          <RepoProvider>
+            <ConfirmProvider>{children}</ConfirmProvider>
+          </RepoProvider>
         </ToastProvider>
       </ThemeProvider>
     </QueryClientProvider>

@@ -66,8 +66,27 @@ export const RunStats = z.object({
   grounding: z.string(),
   /** Generation cost in USD; null when no usage was reported. */
   cost_usd: z.number().nullable(),
+  /** Tokens added by the injected skills prompt block; 0 when the agent has no
+      enabled+linked skills. Nullish so traces written before skills validate. */
+  skills_tokens: z.number().int().nullish(),
 });
 export type RunStats = z.infer<typeof RunStats>;
+
+/**
+ * Per-skill snapshot captured at injection time — the EXACT skill (name, version,
+ * type, body) that was attached to this run's prompt, in link order. Powers the run
+ * trace's "Skill Dynamics" panel, which shows the precise body each skill contributed
+ * (distinct from `prompt_assembly.skills`, which is the merged rendered block).
+ * Nullish/additive so traces written before skill snapshots still validate.
+ */
+export const TraceSkill = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.number().int(),
+  type: z.string(),
+  body: z.string(),
+});
+export type TraceSkill = z.infer<typeof TraceSkill>;
 
 /** The single-document trace stored in `run_traces.trace`. */
 export const RunTrace = z.object({
@@ -78,6 +97,9 @@ export const RunTrace = z.object({
     model: z.string(),
     pr: z.number().int().nullish(),
     source: z.enum(['local', 'ci']).default('local'),
+    /** The skills attached to this run, snapshotted at injection time. Absent on
+        runs with no enabled+linked skills, and on traces written before this field. */
+    skills: z.array(TraceSkill).nullish(),
   }),
   stats: RunStats,
   prompt_assembly: PromptAssembly,

@@ -120,4 +120,9 @@ export const s = {
   tabBody: { paddingTop: 18 } satisfies CSSProperties,
   emptyNote: { fontSize: 13, color: "var(--text-muted)", padding: 16 } satisfies CSSProperties,
   noToolCalls: { fontSize: 13, color: "var(--text-muted)" } satisfies CSSProperties,
+  skillDynamicsSubtitle: {
+    fontSize: 12.5,
+    color: "var(--text-muted)",
+    marginBottom: 10,
+  } satisfies CSSProperties,
 } as const;

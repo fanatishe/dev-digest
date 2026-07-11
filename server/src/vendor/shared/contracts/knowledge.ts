@@ -128,6 +128,9 @@ export const Skill = z.object({
   enabled: z.boolean(),
   version: z.number().int(),
   evidence_files: z.array(z.string()).nullish(),
+  // Number of agents this skill is linked to. Nullish/additive: populated by the
+  // list endpoint for the Skills page cards; absent on single-skill fetches.
+  used_by: z.number().int().nullish(),
 });
 export type Skill = z.infer<typeof Skill>;
 
@@ -150,6 +153,22 @@ export const ConventionCandidate = z.object({
   accepted: z.boolean(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+
+/**
+ * An unsaved skill draft built by merging a repo's ACCEPTED conventions into a
+ * single `repo-conventions` skill body. The Conventions "Create skill" modal
+ * pre-fills from this, lets the user edit, then confirms via `POST /skills`
+ * (mirrors the import → confirm flow — nothing is persisted by the draft call).
+ */
+export const ConventionSkillDraft = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  body: z.string(),
+  /** How many accepted conventions were merged into the draft. */
+  merged_count: z.number().int(),
+});
+export type ConventionSkillDraft = z.infer<typeof ConventionSkillDraft>;
 
 // ---- Agents ----
 // 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a

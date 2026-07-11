@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { Icon, Badge, Toggle } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
 import { useDeleteAgent } from "../../../../lib/hooks/agents";
+import { useConfirm } from "@/lib/confirm";
 import { modelColor } from "./helpers";
 import { s } from "./styles";
 
@@ -25,6 +26,7 @@ export function AgentCard({
 }) {
   const t = useTranslations("agents");
   const del = useDeleteAgent();
+  const confirm = useConfirm();
   const color = modelColor(ag.model);
   return (
     <div onClick={onClick} style={s.card(!!active, ag.enabled)}>
@@ -39,9 +41,15 @@ export function AgentCard({
           </div>
         )}
         <button
-          onClick={(e) => {
+          onClick={async (e) => {
             e.stopPropagation();
-            if (window.confirm(`Delete agent "${ag.name}"? This cannot be undone.`)) del.mutate(ag.id);
+            const ok = await confirm({
+              title: "Delete agent?",
+              message: `Delete agent "${ag.name}"? This cannot be undone.`,
+              confirmLabel: "Delete",
+              danger: true,
+            });
+            if (ok) del.mutate(ag.id);
           }}
           disabled={del.isPending}
           title="Delete agent"

@@ -5,6 +5,7 @@ import type {
   RunStats,
   RunTrace,
   ToolCall,
+  TraceSkill,
 } from '@devdigest/shared';
 import { RunTrace as RunTraceSchema } from '@devdigest/shared';
 
@@ -24,6 +25,7 @@ export interface BuildTraceInput {
     model: string;
     pr?: number | null;
     source?: 'local' | 'ci';
+    skills?: TraceSkill[] | null;
   };
   stats: RunStats;
   promptAssembly: PromptAssembly;
@@ -43,6 +45,7 @@ export function buildRunTrace(input: BuildTraceInput): RunTrace {
       model: input.config.model,
       pr: input.config.pr ?? null,
       source: input.config.source ?? 'local',
+      skills: input.config.skills ?? null,
     },
     stats: input.stats,
     prompt_assembly: input.promptAssembly,

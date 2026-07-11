@@ -1,6 +1,7 @@
 export type { TabDef, DropdownItemDef } from "./types";
 export { Drawer } from "./Drawer";
 export { Modal } from "./Modal";
+export { ConfirmDialog } from "./ConfirmDialog";
 export { Tabs } from "./Tabs";
 export { Dropdown } from "./Dropdown";
 export { FormField } from "./FormField";
@@ -8,4 +9,5 @@ export { TextInput } from "./TextInput";
 export { SelectInput } from "./SelectInput";
 export { SearchableSelect } from "./SearchableSelect";
 export { Textarea } from "./Textarea";
+export { CodeEditor } from "./CodeEditor";
 export { Checkbox } from "./Checkbox";

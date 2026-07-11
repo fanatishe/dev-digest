@@ -1,6 +1,10 @@
 import React from "react";
 import { IconBtn } from "../primitives";
 
+// Stack of currently-open modals (mount order). Only the topmost one responds to
+// Escape / Tab so stacked modals don't all close at once or fight over focus.
+const modalStack: symbol[] = [];
+
 export function Modal({
   width = 720,
   title,
@@ -16,6 +20,71 @@ export function Modal({
   children?: React.ReactNode;
   footer?: React.ReactNode;
 }) {
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
+  // Latest onClose without re-running the a11y effect (which would steal focus
+  // back to the dialog on every parent render).
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Modal a11y: focus into the dialog on open, trap Tab within it, close on
+  // Escape, and restore focus to the previously-focused element on unmount.
+  React.useEffect(() => {
+    const node = dialogRef.current;
+    const prevFocused = document.activeElement as HTMLElement | null;
+    const id = Symbol("modal");
+    modalStack.push(id);
+    const isTopmost = () => modalStack[modalStack.length - 1] === id;
+
+    const focusables = (): HTMLElement[] =>
+      node
+        ? Array.from(
+            node.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          )
+        : [];
+
+    // Focus the first control unless a child (e.g. autoFocus) already grabbed it.
+    if (node && !node.contains(document.activeElement)) {
+      (focusables()[0] ?? node).focus();
+    }
+
+    const onKey = (e: KeyboardEvent) => {
+      // Only the topmost modal reacts — a ConfirmDialog over another modal must
+      // not close both on Escape, nor let the lower trap steal Tab focus.
+      if (!isTopmost()) return;
+      if (e.key === "Escape") {
+        onCloseRef.current?.();
+        return;
+      }
+      if (e.key !== "Tab" || !node) return;
+      const f = focusables();
+      if (f.length === 0) {
+        e.preventDefault();
+        node.focus();
+        return;
+      }
+      const first = f[0]!;
+      const last = f[f.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      const idx = modalStack.indexOf(id);
+      if (idx !== -1) modalStack.splice(idx, 1);
+      prevFocused?.focus?.();
+    };
+  }, []);
+
   return (
     <div style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", zIndex: 50, padding: 28 }}>
       <div
@@ -23,8 +92,11 @@ export function Modal({
         style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", animation: "ddfadein .15s ease" }}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={title != null ? titleId : undefined}
+        tabIndex={-1}
         style={{
           position: "relative",
           width,
@@ -50,7 +122,7 @@ export function Modal({
           }}
         >
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
+            <div id={titleId} style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
             {subtitle && (
               <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>{subtitle}</div>
             )}

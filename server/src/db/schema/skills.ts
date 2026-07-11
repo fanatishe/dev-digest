@@ -28,6 +28,9 @@ export const skillVersions = pgTable(
       .references(() => skills.id, { onDelete: 'cascade' }),
     version: integer('version').notNull(),
     body: text('body').notNull(),
+    // Optional "what changed" note captured on save (commit-message style). Shown
+    // in the Versions tab so eval reruns can be traced to a labeled body change.
+    message: text('message'),
     createdAt: now(),
   },
   (t) => ({ pk: primaryKey({ columns: [t.skillId, t.version] }) }),

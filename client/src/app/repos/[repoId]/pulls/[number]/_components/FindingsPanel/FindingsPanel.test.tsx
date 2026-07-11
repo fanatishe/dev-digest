@@ -12,9 +12,8 @@ import { FindingsPanel } from "./FindingsPanel";
 
 afterEach(cleanup);
 
-const FINDINGS: FindingRecord[] = [
-  {
-    id: "f1",
+function finding(o: Partial<FindingRecord> & { id: string }): FindingRecord {
+  return {
     severity: "CRITICAL",
     category: "security",
     title: "Hardcoded secret",
@@ -30,8 +29,11 @@ const FINDINGS: FindingRecord[] = [
     review_id: "r1",
     accepted_at: null,
     dismissed_at: null,
-  },
-];
+    ...o,
+  };
+}
+
+const FINDINGS: FindingRecord[] = [finding({ id: "f1" })];
 
 function renderWithIntl(ui: React.ReactElement) {
   return render(
@@ -51,5 +53,46 @@ describe("FindingsPanel (smoke)", () => {
   it("shows the empty state when nothing matches", () => {
     renderWithIntl(<FindingsPanel findings={[]} prId="pr1" />);
     expect(screen.getByText("No findings match")).toBeInTheDocument();
+  });
+
+  it("keeps only the requested severity when the severity filter is set", () => {
+    const mixed: FindingRecord[] = [
+      finding({ id: "f1", severity: "CRITICAL", title: "Critical one" }),
+      finding({ id: "f2", severity: "WARNING", title: "Warning one" }),
+    ];
+    renderWithIntl(<FindingsPanel findings={mixed} prId="pr1" severity="WARNING" />);
+    expect(screen.getByText("Warning one")).toBeInTheDocument();
+    expect(screen.queryByText("Critical one")).not.toBeInTheDocument();
+  });
+
+  it("expands a revealed finding that isn't the default-open first card", () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const list: FindingRecord[] = [
+      finding({ id: "f1", severity: "CRITICAL", title: "First" }),
+      finding({ id: "f2", severity: "WARNING", title: "Second", rationale: "second rationale here" }),
+    ];
+    renderWithIntl(
+      <FindingsPanel findings={list} prId="pr1" revealFindingId="f2" revealNonce={1} />,
+    );
+    // f2 sorts after f1 (not default-open) but the reveal expands its body.
+    expect(screen.getByText("second rationale here")).toBeInTheDocument();
+  });
+
+  it("force-includes a revealed finding a severity filter would otherwise hide", () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const list: FindingRecord[] = [
+      finding({ id: "f1", severity: "CRITICAL", title: "Crit only" }),
+      finding({ id: "f2", severity: "WARNING", title: "Warn hidden" }),
+    ];
+    renderWithIntl(
+      <FindingsPanel
+        findings={list}
+        prId="pr1"
+        severity="CRITICAL"
+        revealFindingId="f2"
+        revealNonce={1}
+      />,
+    );
+    expect(screen.getByText("Warn hidden")).toBeInTheDocument();
   });
 });

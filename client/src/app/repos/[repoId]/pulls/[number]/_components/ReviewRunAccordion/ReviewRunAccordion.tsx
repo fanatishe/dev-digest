@@ -6,7 +6,7 @@
 "use client";
 
 import React from "react";
-import { Icon, Badge } from "@devdigest/ui";
+import { Icon, Badge, type Severity } from "@devdigest/ui";
 import type { ReviewRecord, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
@@ -29,18 +29,27 @@ export function ReviewRunAccordion({
   defaultOpen = false,
   repoFullName,
   headSha,
+  severity = null,
   targetRunId = null,
   targetNonce = 0,
+  revealFindingId = null,
+  revealNonce = 0,
 }: {
   review: ReviewRecord;
   prId: string;
   defaultOpen?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** When set, the body's FindingsPanel shows only this severity. */
+  severity?: Severity | null;
   /** When this matches review.run_id, the accordion opens and scrolls into view
    *  (driven from the Timeline: clicking an agent name navigates here). */
   targetRunId?: string | null;
   targetNonce?: number;
+  /** A finding to reveal — opens this accordion iff it owns that finding, then the
+   *  panel expands + scrolls to it. */
+  revealFindingId?: string | null;
+  revealNonce?: number;
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -51,6 +60,14 @@ export function ReviewRunAccordion({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetRunId, targetNonce, review.run_id]);
+
+  // Open this run's accordion when the finding being revealed lives inside it; the
+  // FindingsPanel/FindingCard below then expands + scrolls to the card itself.
+  const ownsRevealed = !!revealFindingId && review.findings.some((f) => f.id === revealFindingId);
+  React.useEffect(() => {
+    if (ownsRevealed) setOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealFindingId, revealNonce, review.id]);
   const del = useDeleteReview(prId);
   const findings = review.findings;
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
@@ -152,6 +169,9 @@ export function ReviewRunAccordion({
             prId={prId}
             repoFullName={repoFullName}
             headSha={headSha}
+            severity={severity}
+            revealFindingId={ownsRevealed ? revealFindingId : null}
+            revealNonce={revealNonce}
           />
         </div>
       )}

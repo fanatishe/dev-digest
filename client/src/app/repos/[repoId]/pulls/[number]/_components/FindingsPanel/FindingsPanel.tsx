@@ -4,7 +4,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Toggle, EmptyState } from "@devdigest/ui";
+import { Toggle, EmptyState, type Severity } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
@@ -17,18 +17,44 @@ export function FindingsPanel({
   prId,
   repoFullName,
   headSha,
+  severity = null,
+  revealFindingId = null,
+  revealNonce = 0,
 }: {
   findings: FindingRecord[];
   prId: string;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** When set, only findings of this severity are shown (from `?severity=`). */
+  severity?: Severity | null;
+  /** A finding to reveal (expand + scroll) — from "open finding" in a popover. */
+  revealFindingId?: string | null;
+  /** Bump to re-trigger the reveal for the same finding id. */
+  revealNonce?: number;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const [hideLow, setHideLow] = React.useState(false);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
-  const shown = React.useMemo(() => visibleFindings(findings, hideLow), [findings, hideLow]);
+  const shown = React.useMemo(() => {
+    const list = visibleFindings(findings, hideLow, severity);
+    // A revealed finding must be visible even if a filter/hide-low would drop it.
+    if (revealFindingId && !list.some((f) => f.id === revealFindingId)) {
+      const target = findings.find((f) => f.id === revealFindingId);
+      if (target) return [target, ...list];
+    }
+    return list;
+  }, [findings, hideLow, severity, revealFindingId]);
+
+  // Move keyboard focus to the revealed finding when its nonce changes.
+  const shownRef = React.useRef(shown);
+  shownRef.current = shown;
+  React.useEffect(() => {
+    if (!revealNonce || !revealFindingId) return;
+    const idx = shownRef.current.findIndex((f) => f.id === revealFindingId);
+    if (idx >= 0) setFocusIdx(idx);
+  }, [revealNonce, revealFindingId]);
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -64,6 +90,7 @@ export function FindingsPanel({
               f={f}
               focused={i === focusIdx}
               defaultExpanded={i === 0}
+              reveal={f.id === revealFindingId ? revealNonce : undefined}
               pending={action.isPending}
               repoFullName={repoFullName}
               headSha={headSha}

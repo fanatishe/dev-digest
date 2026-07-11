@@ -7,11 +7,34 @@ for the rubric.
 ## What Works
 <!-- Approaches, patterns, and solutions that proved effective. problem → what to do. -->
 
+- **Hover popover in a table MUST portal to `document.body` with `position:fixed`.**
+  `vendor/ui/primitives/FindingsPopover.tsx` is the module's first real popover
+  (everything else used native `title`). An absolutely-positioned popup gets clipped
+  by any `overflow:hidden` ancestor — the PR-list `tableCard` (`pulls/styles.ts`) has
+  it, so a downward popup was cut off. Fix: `createPortal` to `document.body`, compute
+  `fixed` coords from the anchor's `getBoundingClientRect()` in a `useLayoutEffect`,
+  flip above when `spaceBelow` is tight, and cap `maxHeight` to the viewport.
+  2026-07-09: supersedes the earlier "keep popup a DOM descendant" note below — the
+  portal breaks the parent/child link, so `mouseleave` DOES fire when moving onto the
+  popup; attach the show/hide handlers to BOTH the anchor wrapper and the portaled
+  popup, with a ~120ms close delay, to keep it open across the gap. (2026-07-09)
+
 ## What Doesn't Work
 <!-- Dead ends and antipatterns. The most valuable section — don't skip it. -->
 
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
+
+- **"Reveal a child by nonce" — to expand/scroll to a component that owns its own
+  state.** A bare id or URL param can't re-trigger for the *same* value (re-clicking
+  the same finding). Pattern: parent holds `{ id, n }` state, bumps `n` on every
+  request; the child effect keys on `[revealNonce, id]` and acts. Used by the
+  Agent-runs tab twice: run-scroll (`ReviewRunAccordion` `targetRunId/targetNonce`)
+  and finding-reveal (`FindingsTab` → accordion → `FindingsPanel` → `FindingCard.reveal`
+  → `setExpanded(true)` + `scrollIntoView`). When the target may be hidden by a filter,
+  force-include it (`FindingsPanel` re-adds the revealed finding even under a severity
+  filter / hide-low). In tests, stub `Element.prototype.scrollIntoView = vi.fn()` —
+  jsdom doesn't implement it and the reveal effect will throw otherwise. (2026-07-10)
 
 - **A PR-list column spans four coordinated edits.** The table is CSS-grid driven:
   add the track to `GRID` and the key to `COLUMN_KEYS` (`pulls/constants.ts`), render
@@ -25,11 +48,30 @@ for the rubric.
 ## Tool & Library Notes
 <!-- Quirks and gotchas of dependencies/tooling. -->
 
+- **The UI `Severity` type (`vendor/ui/tokens.ts`) is wider than the contract one.**
+  It adds `INFO`, so indexing a 3-key `{CRITICAL,WARNING,SUGGESTION}` counts object
+  by a `Severity` from `@devdigest/ui` fails typecheck (`Property 'INFO' does not
+  exist`). Narrow the iteration keys with `as const` (e.g.
+  `["CRITICAL","WARNING","SUGGESTION"] as const`) rather than typing them `Severity[]`.
+  Contract-side `Severity` (`vendor/shared/contracts/findings.ts`) is the 3-value enum. (2026-07-09)
+
 ## Recurring Errors & Fixes
 <!-- An error seen more than once + its fix. -->
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-10
+Made popover finding-rows clickable → open that finding on the Agent-runs tab
+(expand + scroll). PR-list path deep-links via `?finding=<id>`; timeline path reveals
+in-place and clears the severity filter. Reused the run-scroll nonce pattern at card
+granularity; `FindingCard` gained a `reveal` nonce prop.
+
+### 2026-07-09
+Added findings-severity counters + hover popover + `?severity=` filter to the PR list
+and agent-runs timeline. New `FindingsPopover` primitive and shared
+`components/FindingsSeverityCounts`; timeline counts derived client-side via
+`RunHistory/helpers.ts` (`findingsByRun`), list counts from the server rollup.
 
 ## Open Questions
 <!-- Unresolved things worth investigating. -->

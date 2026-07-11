@@ -57,4 +57,18 @@ describe("FindingCard (smoke, both themes)", () => {
     fireEvent.click(screen.getByText("Dismiss"));
     expect(onAction).toHaveBeenCalledWith("dismiss");
   });
+
+  it("expands (revealing the body) when the reveal nonce is set", () => {
+    // jsdom doesn't implement scrollIntoView — stub it so the reveal effect runs.
+    Element.prototype.scrollIntoView = vi.fn();
+    const { rerender } = renderWithIntl(<FindingCard f={FINDING} />); // collapsed
+    expect(screen.queryByText("Suggested fix")).not.toBeInTheDocument();
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        <FindingCard f={FINDING} reveal={1} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText("Suggested fix")).toBeInTheDocument();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
 });

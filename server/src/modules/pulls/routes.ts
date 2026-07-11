@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import type { PrMeta, PrDetail, GitHubClient, PrReviewComment, FindingsCounts, FindingPreview } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
@@ -113,13 +113,17 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     // Latest-review SCORE per PR for the list's score ring. Computed on read
     // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // grouping is cheap. The per-severity FINDINGS breakdown + a capped preview
+    // (for the list's hover popup) are rolled up the same way just below —
+    // aggregated across ALL of a PR's reviews, excluding dismissed findings.
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { score: number | null }>();
     // Total run cost per PR (sum across ALL runs; null when no run reported usage).
     // One grouped query, same IN-list as the score rollup.
     const costByPr = new Map<string, number>();
+    // Per-severity finding tallies + a small preview slice per PR.
+    const findingsByPr = new Map<string, FindingsCounts>();
+    const previewByPr = new Map<string, FindingPreview[]>();
     if (prIds.length > 0) {
       const reviewRows = await container.db
         .select({ prId: t.reviews.prId, score: t.reviews.score })
@@ -142,6 +146,66 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       // SUM is null when a PR's runs all have null cost → skip (stays absent → "—").
       for (const c of costRows) {
         if (c.prId != null && c.total != null) costByPr.set(c.prId, c.total);
+      }
+
+      // FINDINGS: every non-dismissed finding across the PRs' reviews, joined back
+      // to its PR. Counted per severity, and kept as a capped preview for the popup.
+      const SEV_RANK: Record<string, number> = { CRITICAL: 0, WARNING: 1, SUGGESTION: 2 };
+      const PREVIEW_CAP = 6;
+      const RATIONALE_MAX = 140;
+      const findingRows = await container.db
+        .select({
+          prId: t.reviews.prId,
+          id: t.findings.id,
+          severity: t.findings.severity,
+          title: t.findings.title,
+          file: t.findings.file,
+          startLine: t.findings.startLine,
+          confidence: t.findings.confidence,
+          rationale: t.findings.rationale,
+        })
+        .from(t.findings)
+        .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
+        .where(and(inArray(t.reviews.prId, prIds), isNull(t.findings.dismissedAt)));
+
+      const rawByPr = new Map<string, typeof findingRows>();
+      for (const f of findingRows) {
+        const counts = findingsByPr.get(f.prId) ?? { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
+        if (f.severity === 'CRITICAL' || f.severity === 'WARNING' || f.severity === 'SUGGESTION') {
+          counts[f.severity] += 1;
+        }
+        findingsByPr.set(f.prId, counts);
+        const bucket = rawByPr.get(f.prId) ?? [];
+        bucket.push(f);
+        rawByPr.set(f.prId, bucket);
+      }
+      for (const [prId, list] of rawByPr) {
+        const preview = list
+          .slice()
+          .sort(
+            (a, b) =>
+              (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9) ||
+              b.confidence - a.confidence,
+          )
+          .slice(0, PREVIEW_CAP)
+          .map((f): FindingPreview => {
+            // `rationale` is NOT NULL in the schema, but guard defensively so a
+            // stray null can never 500 the whole PR-list endpoint.
+            const rationale = f.rationale ?? '';
+            return {
+              id: f.id,
+              severity: f.severity as FindingPreview['severity'],
+              title: f.title,
+              file: f.file,
+              start_line: f.startLine,
+              confidence: f.confidence,
+              rationale:
+                rationale.length > RATIONALE_MAX
+                  ? `${rationale.slice(0, RATIONALE_MAX - 1).trimEnd()}…`
+                  : rationale,
+            };
+          });
+        previewByPr.set(prId, preview);
       }
     }
 
@@ -170,6 +234,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
         cost_usd: costByPr.get(r.id) ?? null,
+        findings: findingsByPr.get(r.id) ?? null,
+        findings_preview: previewByPr.get(r.id) ?? null,
       };
     });
   });

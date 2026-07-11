@@ -7,7 +7,7 @@
 
 import React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Skeleton, ErrorState } from "@devdigest/ui";
+import { Skeleton, ErrorState, type Severity } from "@devdigest/ui";
 import { AppShell } from "../../../../../components/app-shell";
 import { RepoNotFound } from "@/components/repo-not-found";
 import { PrDetailHeader } from "./_components/PrDetailHeader";
@@ -59,6 +59,15 @@ export default function PRDetailPage() {
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
+  // Validate against the known set — the raw query param is attacker-controlled,
+  // and an unknown value would silently hide every finding (nothing matches).
+  const SEVERITIES = ["CRITICAL", "WARNING", "SUGGESTION"] as const;
+  const severityParam = search.get("severity");
+  const severity: Severity | null = SEVERITIES.includes(severityParam as never)
+    ? (severityParam as Severity)
+    : null;
+  // Deep-link to a specific finding (from the PR-list popover) → reveal it below.
+  const finding = search.get("finding");
   const setParam = (key: string, val: string | null) => {
     const sp = new URLSearchParams(search.toString());
     if (val == null) sp.delete(key);
@@ -147,6 +156,10 @@ export default function PRDetailPage() {
             prCommits={pr.commits}
             repoFullName={repoFullName}
             headSha={pr.head_sha}
+            severity={severity}
+            targetFindingId={finding}
+            onSelectSeverity={(sev) => setParam("severity", sev)}
+            onClearSeverity={() => setParam("severity", null)}
             cancelMutation={cancel}
             onOpenTrace={(id) => setParam("trace", id)}
             onDelete={(id) => {

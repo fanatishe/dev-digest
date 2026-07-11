@@ -13,7 +13,7 @@ import { AgentEditor } from "../AgentEditor";
 import { useAgents, useAgent, useUpdateAgent } from "@/lib/hooks/agents";
 import { ApiError } from "@/lib/api";
 
-const VALID_TABS = ["config"];
+const VALID_TABS = ["config", "skills"];
 
 export function AgentDetailView({ id }: { id: string }) {
   const search = useSearchParams();

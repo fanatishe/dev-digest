@@ -66,6 +66,9 @@ export const RunStats = z.object({
   grounding: z.string(),
   /** Generation cost in USD; null when no usage was reported. */
   cost_usd: z.number().nullable(),
+  /** Tokens added by the injected skills prompt block; 0 when the agent has no
+      enabled+linked skills. Nullish so traces written before skills validate. */
+  skills_tokens: z.number().int().nullish(),
 });
 export type RunStats = z.infer<typeof RunStats>;
 

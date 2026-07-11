@@ -40,6 +40,35 @@ for the rubric.
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
 
+- **Native HTML5 drag-reorder should reorder by ID, not by list index.** The agent
+  editor's Skills tab (`AgentEditor/_components/SkillsTab`) lets you filter the list
+  AND drag to reorder. If `onDrop` reordered by the rendered index, a filtered view
+  would move the wrong row. Track `dragId`, and on drop splice within the full
+  `order: string[]` at `indexOf(targetId)` — correct under any filter. The checkbox
+  = link membership (attach/detach via `POST /agents/:id/skills { skill_ids }`);
+  there is no per-agent "enabled" flag, so "attached" IS "enabled for this agent".
+  Keep a local `order` state and resync from the server set via an effect keyed on
+  `linkedIds.join(",")` so post-mutation cache writes don't fight optimistic order.
+- **The icon registry (`vendor/ui/icons.tsx`) is a fixed lucide subset — check
+  before using.** `Sparkles`, `Upload`, `Link`, `Globe`, `Menu`, `Star`, `Trash`,
+  `Eye`, `History`, `BarChart`, `FlaskConical`, `Play` exist; `GripVertical` and
+  `Download` do NOT. Use `Menu` for a drag handle and `Plus` for an import action, or
+  add the lucide import to the registry first. `Edit` is an alias for `Pencil`.
+  (2026-07-11)
+
+- **A master–detail screen with a shared list should render ONE component from both
+  routes, not duplicate the list.** The Skills page (`_components/SkillsWorkbench`) is
+  rendered by BOTH `/skills/page.tsx` and `/skills/[id]/page.tsx`; the `id` prop drives
+  the right pane (editor vs "select a skill"). Selecting a card is `router.push`, tab
+  state lives in `?tab=` via `router.replace`. This is cleaner than AgentDetailView,
+  which re-declares the left list. **Inline create-draft pattern:** an editor's Config
+  tab takes `skill?` — with a skill it edits; without one it's a draft whose first Save
+  `POST`s and calls `onCreated(created)` so the parent routes to `/skills/[id]`. No
+  empty rows are created until save. `@devdigest/ui` already exports a `Markdown`
+  primitive (react-markdown + gfm) — use it for "rendered" previews instead of a new
+  dep, and a ~25-line LCS `lineDiff` covers a version-diff modal without a diff lib.
+  (2026-07-11)
+
 - **"Reveal a child by nonce" — to expand/scroll to a component that owns its own
   state.** A bare id or URL param can't re-trigger for the *same* value (re-clicking
   the same finding). Pattern: parent holds `{ id, n }` state, bumps `n` on every

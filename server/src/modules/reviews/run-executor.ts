@@ -184,6 +184,17 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
+      // Skills — reusable prompt blocks the user attached to this agent (Agent
+      // editor → Skills tab), in their chosen order. Only ENABLED skills are
+      // injected; a disabled skill produces no prompt block and so never shows up
+      // in the assembled prompt or the trace. assemblePrompt omits the section
+      // entirely when the array is empty.
+      const linkedSkills = await this.container.agentsRepo.linkedSkills(agent.id);
+      const skillBodies = linkedSkills.filter((l) => l.skill.enabled).map((l) => l.skill.body);
+      if (skillBodies.length > 0) {
+        runLog.info(`Injecting ${skillBodies.length} skill block(s) into the prompt`);
+      }
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -196,6 +207,8 @@ export class ReviewRunExecutor {
         // Per-agent review strategy (configured in the Agent editor); falls back
         // to the studio default. single-pass = whole diff in one call.
         strategy: agent.strategy ?? REVIEW_STRATEGY,
+        // Skills — enabled+linked skill bodies, in order. Omitted when empty.
+        ...(skillBodies.length > 0 ? { skills: skillBodies } : {}),
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
@@ -212,6 +225,14 @@ export class ReviewRunExecutor {
         },
       });
       const { tokensIn, tokensOut, costUsd, grounding } = outcome;
+
+      // Attribute the tokens the skills block added to the prompt so the run
+      // trace can show it as its own line item. `assembly.skills` is the exact
+      // rendered block (null when no skills were injected).
+      const skillsTokens = outcome.assembly.skills
+        ? this.container.tokenizer.count(outcome.assembly.skills)
+        : 0;
+      if (skillsTokens > 0) runLog.info(`Skills block added ~${skillsTokens} tokens to the prompt`);
 
       const keptFindings = outcome.review.findings;
 
@@ -270,6 +291,7 @@ export class ReviewRunExecutor {
           cost_usd: costUsd,
           findings: findingRows.length,
           grounding,
+          skills_tokens: skillsTokens,
         },
         prompt_assembly: outcome.assembly,
         tool_calls: outcome.chunks.map((c) => ({

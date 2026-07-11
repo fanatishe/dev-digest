@@ -6,7 +6,11 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { SkillsRepository } from '../modules/skills/repository.js';
+import { AgentsRepository } from '../modules/agents/repository.js';
+import type { SkillSource, SkillType } from '@devdigest/shared';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -218,6 +222,102 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
+  }
+
+  // ---- Skills + the Test Quality Reviewer agent -------------------------------
+  // A reusable skill is text + config appended to an agent's prompt at review
+  // time. We seed four and attach them to a new agent so the control experiment
+  // (a happy-path-only test PR: flagged WITH skills, missed without) reproduces.
+  // One skill carries source='extracted' to represent the import path end-to-end.
+  const skillsRepo = new SkillsRepository(db);
+  const agentsRepo = new AgentsRepository(db);
+
+  const seedSkills: Array<{
+    name: string;
+    description: string;
+    type: SkillType;
+    source: SkillSource;
+    body: string;
+  }> = [
+    {
+      name: 'branch-coverage-nudge',
+      description:
+        'Flag any production branch introduced by the diff that no test in the diff exercises.',
+      type: 'rubric',
+      source: 'manual',
+      body: `# Branch coverage
+For every \`if\`/\`else\`, \`try\`/\`catch\`, guard clause, switch case, early return and
+\`??\`/\`||\` fallback added or changed in this diff, confirm a test drives an input that
+reaches it AND asserts a result that would fail if the branch broke. Name the exact
+uncovered branch and the input that reaches it. The happy path being green is not
+coverage of the error path.`,
+    },
+    {
+      name: 'no-over-mocking',
+      description:
+        'Reject tests that mock the unit under test or only assert that a mock was called.',
+      type: 'convention',
+      source: 'manual',
+      body: `# No over-mocking
+A test must assert on the observable result of the real unit, not on the fact that a
+test double was invoked. Flag: mocking the very function under test; mocking so much
+that the assertion only proves the mock works; asserting \`spy.calledWith(...)\` where
+asserting the returned value/state would actually pin the behaviour.`,
+    },
+    {
+      name: 'flake-smells',
+      description: 'Detect non-deterministic test patterns that cause flakes.',
+      type: 'custom',
+      source: 'manual',
+      body: `# Flake smells
+Flag tests that depend on real time / \`Date.now()\` / timers without fake timers,
+\`sleep\`-based waits, ordering of unordered data, unseeded randomness, real
+network/filesystem/shared-DB access without isolation, or state leaked between tests
+(shared mutable module state, missing cleanup).`,
+    },
+    {
+      // Represents a skill brought in via the import path (extract-only, from an
+      // uploaded markdown/zip). Enabled here so the seeded experiment runs.
+      name: 'corner-case-checklist',
+      description: 'Enumerate the corner cases a change to input-handling code must test.',
+      type: 'rubric',
+      source: 'extracted',
+      body: `# Corner cases
+For input-handling code, require tests for: empty / null / undefined / zero inputs;
+empty collections; the first and last element; boundary and off-by-one edges;
+duplicate and out-of-order inputs; and the error/rejection path with the exact error
+shape callers depend on. Missing any reachable case for changed behaviour is a gap.`,
+    },
+  ];
+
+  const skillIds: string[] = [];
+  for (const s of seedSkills) {
+    const existing = (await skillsRepo.list(workspaceId)).find((x) => x.name === s.name);
+    const id = existing?.id ?? (await skillsRepo.insert({ workspaceId, ...s, enabled: true })).id;
+    skillIds.push(id);
+  }
+
+  const testQualityAgent: typeof t.agents.$inferInsert = {
+    workspaceId,
+    name: 'Test Quality Reviewer',
+    description: 'Checks test quality: uncovered branches, missed corner cases, over-mocking, flakes.',
+    provider: DEFAULT_PROVIDER,
+    model: DEFAULT_MODEL,
+    systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+    enabled: true,
+    version: 1,
+    createdBy: userId,
+  };
+  let [tqAgent] = await db
+    .select()
+    .from(t.agents)
+    .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, testQualityAgent.name)));
+  if (!tqAgent) {
+    [tqAgent] = await db.insert(t.agents).values(testQualityAgent).returning();
+  }
+  // Attach the skills in order (idempotent upsert of each link).
+  for (let i = 0; i < skillIds.length; i++) {
+    await agentsRepo.linkSkill(tqAgent!.id, skillIds[i]!, i);
   }
 
   return { workspaceId, userId };

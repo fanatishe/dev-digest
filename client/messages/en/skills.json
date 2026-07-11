@@ -3,10 +3,12 @@
     "crumbLab": "Skills Lab",
     "crumbSkills": "Skills",
     "heading": "Skills",
+    "subtitle": "Reusable prompt blocks you attach to agents.",
     "addSkill": "Add Skill",
     "searchPlaceholder": "Search skills…",
     "loadError": "Could not load skills.",
     "menu": {
+      "create": "Create from scratch",
       "fromFile": "Import from file",
       "fromUrl": "Import from URL",
       "community": "Search community skills…"
@@ -20,6 +22,85 @@
       "title": "Select a skill",
       "body": "Pick a skill on the left to preview its body."
     }
+  },
+  "card": {
+    "agents": "{count} agents",
+    "pull": "—% pull",
+    "accept": "—% accept"
+  },
+  "editor": {
+    "runOnEvals": "Run on evals",
+    "newSkill": "New skill",
+    "tabs": {
+      "config": "Config",
+      "preview": "Preview",
+      "evals": "Evals",
+      "stats": "Stats",
+      "versions": "Versions"
+    }
+  },
+  "config": {
+    "title": "Configuration",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description",
+    "descriptionHint": "The skill's interface — write it directively (what it makes the agent do).",
+    "typeLabel": "Type",
+    "bodyLabel": "Skill body",
+    "unsaved": "unsaved",
+    "tokens": "{count} tokens",
+    "messageLabel": "What changed (optional)",
+    "messagePlaceholder": "e.g. Tightened scope rule; cap at 5 findings",
+    "messageHint": "Recorded on the version this save creates.",
+    "save": "Save skill",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "enabled": "Enabled",
+    "snapshotNote": "Saving snapshots the body as <b>v{version}</b>",
+    "savedToast": "Saved (v{version}).",
+    "createdToast": "Created \"{name}\".",
+    "deleteHeading": "Delete skill",
+    "deleteBody": "Removes it from all agents. This can't be undone.",
+    "delete": "Delete",
+    "deleteConfirm": "Delete skill \"{name}\"? It will be unlinked from all agents. This cannot be undone.",
+    "deletedToast": "Deleted \"{name}\"."
+  },
+  "create": {
+    "title": "Create a skill",
+    "subtitle": "Author a reusable prompt block.",
+    "cancel": "Cancel",
+    "descriptionLabel": "Description",
+    "descriptionHint": "The skill's interface — write it directively (what it makes the agent do).",
+    "typeLabel": "Type"
+  },
+  "versions": {
+    "heading": "Version history",
+    "count": "{count} versions",
+    "subtitle": "Every save snapshots the body so eval runs stay reproducible against the exact text they scored.",
+    "current": "Current",
+    "noMessage": "(no message)",
+    "diff": "Diff",
+    "restore": "Restore",
+    "restoredToast": "Restored v{version} as the current body.",
+    "diffTitle": "v{from} → current",
+    "diffEmpty": "No line changes between these versions.",
+    "loadError": "Could not load version history."
+  },
+  "stats": {
+    "usedBy": "Used by",
+    "usedByUnit": "agents",
+    "pullFrequency": "Pull frequency",
+    "acceptRate": "Accept rate",
+    "findings30d": "Findings (30d)",
+    "agentsHeading": "Agents using this skill",
+    "open": "Open",
+    "noAgents": "No agents use this skill yet.",
+    "findingsByCategory": "Findings by category",
+    "scaffold": "Available in a later lesson",
+    "scaffoldNote": "Pull frequency, accept rate and finding attribution arrive once reviews tag the skills that produced each finding."
+  },
+  "evals": {
+    "title": "Skill evals",
+    "body": "Running a skill against a labeled eval set arrives in a later lesson."
   },
   "detail": {
     "crumbSkill": "Skill",
@@ -44,6 +125,10 @@
     "nameLabel": "Skill name",
     "nameHint": "Optional — derived from the first heading if blank.",
     "namePlaceholder": "pr-quality-rubric",
+    "choose": "Choose a .md or .zip file",
+    "chooseHint": "The core markdown is extracted; executable parts of an archive are ignored, never run.",
+    "selected": "Selected: {name}",
+    "evidence": "Other markdown in the archive (kept for provenance, not injected):",
     "bodyLabel": "Skill body (Markdown)",
     "bodyHint": "Pasted content is wrapped as untrusted data — never executed as instructions.",
     "bodyPlaceholder": "# Rule\nDescribe the rule…",
@@ -89,6 +174,7 @@
   },
   "preview": {
     "untrustedBadge": "untrusted source",
+    "renderedAs": "Rendered as the reviewing agent receives it.",
     "enabled": "Enabled",
     "disabled": "Disabled",
     "save": "Save",
@@ -96,6 +182,8 @@
     "untrustedNotice": "This skill came from an untrusted source. Its body is stored as data (delimiter-wrapped) and must be vetted before it is enabled for an agent.",
     "bodyLabel": "Skill body (Markdown)",
     "bodyHint": "Saving a changed body creates a new immutable version.",
-    "version": "v{version}"
+    "version": "v{version}",
+    "savedToast": "Saved (v{version}).",
+    "createdToast": "Created \"{name}\"."
   }
 }

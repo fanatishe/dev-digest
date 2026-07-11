@@ -49,6 +49,15 @@
       "evals": "Evals",
       "stats": "Stats",
       "ci": "CI"
+    },
+    "skillsTab": {
+      "count": "{enabled} of {total} enabled",
+      "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Drag to reorder.",
+      "filter": "Filter skills…",
+      "linkedHeading": "Attached",
+      "availableHeading": "Available",
+      "empty": "No skills yet. Create skills on the Skills page, then attach them here.",
+      "disabledTag": "disabled"
     }
   },
   "config": {

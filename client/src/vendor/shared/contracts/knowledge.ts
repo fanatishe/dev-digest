@@ -128,6 +128,9 @@ export const Skill = z.object({
   enabled: z.boolean(),
   version: z.number().int(),
   evidence_files: z.array(z.string()).nullish(),
+  // Number of agents this skill is linked to. Nullish/additive: populated by the
+  // list endpoint for the Skills page cards; absent on single-skill fetches.
+  used_by: z.number().int().nullish(),
 });
 export type Skill = z.infer<typeof Skill>;
 

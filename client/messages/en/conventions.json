@@ -10,6 +10,10 @@
     "runExtraction": "Run extraction",
     "extractionFailed": "Extraction failed",
     "loadError": "Could not load conventions.",
+    "noRepo": "Select a repository to extract conventions from.",
+    "deselectAll": "Deselect all",
+    "acceptedCount": "{accepted} of {total} accepted",
+    "createSkill": "Create skill",
     "empty": {
       "title": "No conventions extracted yet",
       "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
@@ -19,8 +23,30 @@
   },
   "card": {
     "confidence": "Confidence",
+    "accept": "Accept",
     "accepted": "Accepted",
     "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "reject": "Reject",
+    "acceptAsSkill": "Accept as Skill",
+    "copy": "Copy evidence"
+  },
+  "modal": {
+    "title": "Create skill from conventions",
+    "banner": "Merged from {count, plural, one {# accepted convention} other {# accepted conventions}} in {repo}. Everything below is editable before you save.",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description",
+    "typeLabel": "Type",
+    "enabledLabel": "Enabled",
+    "enabledHint": "Whether this block is added to agents' prompts.",
+    "bodyLabel": "Skill body",
+    "tokens": "{count} tokens",
+    "unsaved": "unsaved",
+    "cancel": "Cancel",
+    "create": "Create skill",
+    "creating": "Creating…",
+    "savedNote": "Saved as v1 · added to Skills Lab",
+    "createdToast": "Created skill {name}",
+    "loadError": "Could not build the skill draft.",
+    "noneAccepted": "Accept at least one convention to create a skill."
   }
 }

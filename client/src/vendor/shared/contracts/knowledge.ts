@@ -154,6 +154,22 @@ export const ConventionCandidate = z.object({
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
 
+/**
+ * An unsaved skill draft built by merging a repo's ACCEPTED conventions into a
+ * single `repo-conventions` skill body. The Conventions "Create skill" modal
+ * pre-fills from this, lets the user edit, then confirms via `POST /skills`
+ * (mirrors the import → confirm flow — nothing is persisted by the draft call).
+ */
+export const ConventionSkillDraft = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  body: z.string(),
+  /** How many accepted conventions were merged into the draft. */
+  merged_count: z.number().int(),
+});
+export type ConventionSkillDraft = z.infer<typeof ConventionSkillDraft>;
+
 // ---- Agents ----
 export const Provider = z.enum(['openai', 'anthropic', 'openrouter']);
 export type Provider = z.infer<typeof Provider>;

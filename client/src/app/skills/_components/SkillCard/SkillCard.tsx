@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, Toggle } from "@devdigest/ui";
 import type { Skill } from "@devdigest/shared";
@@ -13,6 +14,7 @@ import { s } from "./styles";
 /** A left-list skill row — type/source badges, enabled toggle, usage stats line. */
 export function SkillCard({ skill, active, onClick }: { skill: Skill; active?: boolean; onClick?: () => void }) {
   const t = useTranslations("skills");
+  const router = useRouter();
   const update = useUpdateSkill();
   const del = useDeleteSkill();
   const confirm = useConfirm();
@@ -40,7 +42,11 @@ export function SkillCard({ skill, active, onClick }: { skill: Skill; active?: b
               confirmLabel: "Delete",
               danger: true,
             });
-            if (ok) del.mutate(skill.id);
+            if (!ok) return;
+            await del.mutateAsync(skill.id);
+            // If we just deleted the open skill, its detail route would 404 —
+            // fall back to the library index rather than the deleted id.
+            if (active) router.push("/skills");
           }}
           disabled={del.isPending}
           title="Delete skill"

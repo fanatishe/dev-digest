@@ -67,6 +67,36 @@ for the rubric.
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
 
+### 2026-07-11 (Conventions extractor)
+Built the `modules/conventions` extractor (L02). Heavily pre-scaffolded: the
+`conventions` table (already in `0000_init.sql` — no migration), the `ConventionCandidate`
+shared contract, and `conventions` as a `FeatureModelId` with a registry default all
+pre-existed. Net-new: the module (routes/service/repository/helpers), a `getFileContent`
+facade on `RepoIntel` (reads the clone via the existing module-private `readClone`; safe
+to extend the interface — NO partial-interface RepoIntel mock exists in
+`adapters/mocks.ts`), a `ConventionSkillDraft` contract, and a `skill-draft` endpoint that
+merges ACCEPTED rows into one `<repo>-conventions` skill body WITHOUT persisting (client
+confirms via existing `POST /skills` — same import→confirm trust shape). Model choice goes
+through `resolveFeatureModel(ws,'conventions')` (registry default is a capable model,
+gpt-5.4 — overridable in Settings), NOT `model-router` (that has no 'conventions' TaskKind
+and doesn't need one — feature-models is the mechanism for these system features). The
+evidence-verification gate (`helpers.verifyEvidence`) is the whole point of stage 3: a
+candidate survives only if its cited file was sampled AND the 1-based line exists and is
+non-blank — kept a pure helper so it's unit-testable without a DB/LLM. Extraction is a
+FULL replace per repo (`replaceForRepo` in a txn); a re-scan drops prior accept state.
+typecheck + 120 unit tests green (+10 conventions-extract).
+
+### 2026-07-11 (Skills log line + trace Skill Dynamics)
+AC required the EXACT run-log string `Skills: N skill(s) attached to prompt` — changed
+`run-executor.ts`'s old `Injecting N skill block(s)` line. Also snapshot each attached
+skill `{id,name,version,type,body}` into `RunTrace.config.skills` at injection time so the
+client's Skill Dynamics panel shows the exact body even after the skill is later edited.
+`config.skills` is nullish/additive and mirrored in BOTH vendored `trace.ts` copies
+(server + client) PLUS threaded through `platform/trace-builder.ts` (the shared A5
+multi-agent builder) — miss any and a run either loses the snapshot or fails
+`RunTraceSchema.parse`. `contracts.test.ts` validates the shape; it stayed green because
+the field is optional.
+
 ### 2026-07-11 (API Contract Reviewer seed)
 Ported the API Contract Reviewer agent + 4 contract skills (breaking-change,
 response-schema, semver-discipline, deprecation-policy) from a parallel project's seed,

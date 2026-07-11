@@ -178,6 +178,22 @@ for the rubric.
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
 
+### 2026-07-11 (Conventions tab + Skill Dynamics)
+Built the Conventions tab (Skills Lab). Mostly wiring — `messages/en/conventions.json`,
+the `ConventionCandidate` contract, the `/conventions` key in `activeKeyFor`, and the
+`ListChecks` icon all pre-existed. Net-new: `app/conventions/` (thin page → single-column
+`ConventionsWorkbench`, NOT master–detail like Skills), `ConventionCandidateCard`
+(confidence bar + Accept/Reject mirroring `FindingCard`'s `active`/`disabled` pattern),
+and `CreateSkillModal`. The create-from-conventions flow reuses the import→confirm shape:
+a server endpoint (`GET /repos/:id/conventions/skill-draft`) returns an UNSAVED merged
+draft, the modal edits it, then the EXISTING `useCreateSkill` (`POST /skills`) persists —
+on success `router.push('/skills/{id}?tab=config')` to land on the new skill's Config tab.
+Gotcha: `TraceSection`'s `icon` prop is a restricted union
+(`Settings|Gauge|FileText|Wrench|Code|AlertOctagon`) — "Sparkles" fails typecheck; used
+`FileText` for the new **Skill Dynamics** trace section, which renders `trace.config.skills`
+(per-skill exact body via `PromptBlock`), guarded `!= null` so old traces still render.
+Typecheck + 64 client tests green (+4 ConventionCandidateCard).
+
 ### 2026-07-11 (Skills Lab design pass)
 Aligned the Skills screen to new designs (delta pass — feature already existed). (1)
 Split the single-group sidebar into WORKSPACE (Pull Requests) + SKILLS LAB (Skills,

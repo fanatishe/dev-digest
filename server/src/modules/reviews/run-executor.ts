@@ -190,9 +190,10 @@ export class ReviewRunExecutor {
       // in the assembled prompt or the trace. assemblePrompt omits the section
       // entirely when the array is empty.
       const linkedSkills = await this.container.agentsRepo.linkedSkills(agent.id);
-      const skillBodies = linkedSkills.filter((l) => l.skill.enabled).map((l) => l.skill.body);
+      const enabledSkills = linkedSkills.filter((l) => l.skill.enabled).map((l) => l.skill);
+      const skillBodies = enabledSkills.map((s) => s.body);
       if (skillBodies.length > 0) {
-        runLog.info(`Injecting ${skillBodies.length} skill block(s) into the prompt`);
+        runLog.info(`Skills: ${skillBodies.length} skill(s) attached to prompt`);
       }
 
       // ---- Engine: assemble → single-pass → grounding -----------------------
@@ -283,6 +284,20 @@ export class ReviewRunExecutor {
           model: agent.model,
           pr: pull.number,
           source: 'local',
+          // Snapshot the exact skills attached at injection time so the run trace's
+          // "Skill Dynamics" panel can show each skill's precise body/version even if
+          // the skill is later edited. Omitted when the agent has no enabled skills.
+          ...(enabledSkills.length > 0
+            ? {
+                skills: enabledSkills.map((s) => ({
+                  id: s.id,
+                  name: s.name,
+                  version: s.version,
+                  type: s.type,
+                  body: s.body,
+                })),
+              }
+            : {}),
         },
         stats: {
           duration_ms: durationMs,

@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Skill } from "@devdigest/shared";
@@ -7,6 +7,21 @@ import messages from "../../../../../messages/en/skills.json";
 import { ConfirmProvider } from "@/lib/confirm";
 import { SkillCard } from "./SkillCard";
 
+const push = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push, replace: vi.fn() }),
+}));
+
+const del = vi.fn(() => Promise.resolve({ ok: true }));
+vi.mock("@/lib/hooks/skills", () => ({
+  useDeleteSkill: () => ({ mutateAsync: del, isPending: false }),
+  useUpdateSkill: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+beforeEach(() => {
+  push.mockClear();
+  del.mockClear();
+});
 afterEach(cleanup);
 
 const SKILL: Skill = {
@@ -48,5 +63,25 @@ describe("SkillCard (smoke)", () => {
   it("does NOT show needs-vetting for a manual skill", () => {
     renderWithIntl(<SkillCard skill={SKILL} />);
     expect(screen.queryByText("needs vetting")).not.toBeInTheDocument();
+  });
+
+  it("deletes the skill and, when it is the open one, navigates to /skills", async () => {
+    renderWithIntl(<SkillCard skill={SKILL} active />);
+
+    fireEvent.click(screen.getByLabelText("Delete skill"));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(del).toHaveBeenCalledWith("sk1"));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/skills"));
+  });
+
+  it("does NOT navigate when deleting a skill that is not open", async () => {
+    renderWithIntl(<SkillCard skill={SKILL} />);
+
+    fireEvent.click(screen.getByLabelText("Delete skill"));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(del).toHaveBeenCalledWith("sk1"));
+    expect(push).not.toHaveBeenCalled();
   });
 });

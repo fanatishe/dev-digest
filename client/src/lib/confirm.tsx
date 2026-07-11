@@ -38,7 +38,15 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const [pending, setPending] = React.useState<Pending | null>(null);
 
   const confirm = React.useCallback<ConfirmFn>(
-    (opts) => new Promise<boolean>((resolve) => setPending({ ...opts, resolve })),
+    (opts) =>
+      new Promise<boolean>((resolve) => {
+        // If a confirm is already open, settle it as cancelled before replacing
+        // it — otherwise the earlier promise would never resolve (dangling await).
+        setPending((prev) => {
+          prev?.resolve(false);
+          return { ...opts, resolve };
+        });
+      }),
     [],
   );
 

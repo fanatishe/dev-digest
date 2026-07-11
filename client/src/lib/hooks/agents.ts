@@ -8,14 +8,14 @@ import type { Agent, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shar
 export function useAgents() {
   return useQuery({
     queryKey: ["agents"],
-    queryFn: ({ signal }) => api.get<Agent[]>("/agents", signal),
+    queryFn: () => api.get<Agent[]>("/agents"),
   });
 }
 
 export function useAgent(id: string | null | undefined) {
   return useQuery({
     queryKey: ["agent", id],
-    queryFn: ({ signal }) => api.get<Agent>(`/agents/${id}`, signal),
+    queryFn: () => api.get<Agent>(`/agents/${id}`),
     enabled: !!id,
   });
 }
@@ -84,7 +84,7 @@ export function useDeleteAgent() {
 export function useProviderModels(provider: Provider | null | undefined) {
   return useQuery({
     queryKey: ["provider-models", provider],
-    queryFn: ({ signal }) => api.get<ModelInfo[]>(`/providers/${provider}/models`, signal),
+    queryFn: () => api.get<ModelInfo[]>(`/providers/${provider}/models`),
     enabled: !!provider,
     staleTime: 5 * 60_000,
   });

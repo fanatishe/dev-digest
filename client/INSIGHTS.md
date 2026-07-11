@@ -124,6 +124,27 @@ for the rubric.
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
 
+### 2026-07-11 (self-review fixes)
+Post-refactor review caught 3 latent bugs, now fixed: (1) `Modal`'s a11y key handler
+was a `document` listener that fired for every open modal — added a module-level
+`modalStack` so only the topmost modal reacts to Escape/Tab (stacked
+ConfirmDialog-over-modal no longer closes both / fights the focus trap); (2)
+`ConfirmProvider` orphaned the prior promise when `confirm()` was called while one was
+open — it now settles the previous pending as `false` before replacing it; (3) reverted
+`TraceBody` specs key to a composite `${sp}-${i}` (static list; the bare `key={sp}` added
+a needless uniqueness assumption). Typecheck + build + 44 tests green.
+
+### 2026-07-11 (audit items #9–#11)
+Reconciled the query hooks back to `() => api.get(path)` after `api.ts` dropped the
+AbortSignal param (kept the codebase self-consistent; green baseline restored). #9 tests:
++7 (44 total) — `parseSeverity` (PrDetailView helper), `ReviewNotices`, `LiveReviewBanner`
+(RunStatus stubbed); `RunRow`'s outcome logic is already covered indirectly by
+`RunHistory.test`. #10: wrote `docs/styling.md` — the decision record for `styles.ts`
+inline-object + CSS-var-token styling and why Tailwind stays inside `vendor/ui` only.
+#11: `docs/react-compiler.md` — React Compiler pilot is *prepared not activated* (needs
+`pnpm add -D babel-plugin-react-compiler`; can't install here — pnpm absent, npm would
+corrupt the pnpm node_modules; flipping the flag without the plugin breaks the build).
+
 ### 2026-07-10 (frontend hardening)
 Acted on a React/Next best-practices audit of `client/`. Added route boundaries
 (`error.tsx`, `global-error.tsx`, `not-found.tsx`); replaced all 4 `window.confirm`

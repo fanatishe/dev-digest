@@ -23,7 +23,7 @@ import type {
 export function useSettings() {
   return useQuery({
     queryKey: ["settings"],
-    queryFn: ({ signal }) => api.get<Settings>("/settings", signal),
+    queryFn: () => api.get<Settings>("/settings"),
   });
 }
 
@@ -58,7 +58,7 @@ export function useTestConnection() {
 export function useSecretsStatus() {
   return useQuery({
     queryKey: ["secrets-status"],
-    queryFn: ({ signal }) => api.get<SecretsStatus>("/settings/secrets-status", signal),
+    queryFn: () => api.get<SecretsStatus>("/settings/secrets-status"),
     staleTime: 30_000,
   });
 }
@@ -67,7 +67,7 @@ export function useSecretsStatus() {
 export function useRepos() {
   return useQuery({
     queryKey: ["repos"],
-    queryFn: ({ signal }) => api.get<Repo[]>("/repos", signal),
+    queryFn: () => api.get<Repo[]>("/repos"),
   });
 }
 
@@ -102,7 +102,7 @@ export function useDeleteRepo() {
 export function usePulls(repoId: string | null | undefined) {
   return useQuery({
     queryKey: ["pulls", repoId],
-    queryFn: ({ signal }) => api.get<PrMeta[]>(`/repos/${repoId}/pulls`, signal),
+    queryFn: () => api.get<PrMeta[]>(`/repos/${repoId}/pulls`),
     enabled: !!repoId,
     // Auto-refresh PR statuses: re-sync from GitHub every 60s while the page is
     // open, and whenever the window regains focus.
@@ -114,7 +114,7 @@ export function usePulls(repoId: string | null | undefined) {
 export function usePullDetail(prId: string | number | null | undefined) {
   return useQuery({
     queryKey: ["pull", prId],
-    queryFn: ({ signal }) => api.get<PrDetail>(`/pulls/${prId}`, signal),
+    queryFn: () => api.get<PrDetail>(`/pulls/${prId}`),
     enabled: prId != null,
   });
 }
@@ -123,7 +123,7 @@ export function usePullDetail(prId: string | number | null | undefined) {
 export function useContextFiles(repoId: string | null | undefined) {
   return useQuery({
     queryKey: ["context", repoId],
-    queryFn: ({ signal }) => api.get<SpecFile[]>(`/repos/${repoId}/context`, signal),
+    queryFn: () => api.get<SpecFile[]>(`/repos/${repoId}/context`),
     enabled: !!repoId,
   });
 }

@@ -1,6 +1,10 @@
 import React from "react";
 import { IconBtn } from "../primitives";
 
+// Stack of currently-open modals (mount order). Only the topmost one responds to
+// Escape / Tab so stacked modals don't all close at once or fight over focus.
+const modalStack: symbol[] = [];
+
 export function Modal({
   width = 720,
   title,
@@ -28,6 +32,9 @@ export function Modal({
   React.useEffect(() => {
     const node = dialogRef.current;
     const prevFocused = document.activeElement as HTMLElement | null;
+    const id = Symbol("modal");
+    modalStack.push(id);
+    const isTopmost = () => modalStack[modalStack.length - 1] === id;
 
     const focusables = (): HTMLElement[] =>
       node
@@ -44,6 +51,9 @@ export function Modal({
     }
 
     const onKey = (e: KeyboardEvent) => {
+      // Only the topmost modal reacts — a ConfirmDialog over another modal must
+      // not close both on Escape, nor let the lower trap steal Tab focus.
+      if (!isTopmost()) return;
       if (e.key === "Escape") {
         onCloseRef.current?.();
         return;
@@ -69,6 +79,8 @@ export function Modal({
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
+      const idx = modalStack.indexOf(id);
+      if (idx !== -1) modalStack.splice(idx, 1);
       prevFocused?.focus?.();
     };
   }, []);

@@ -16,10 +16,16 @@ export const s = {
     textTransform: "uppercase",
     color: "var(--text-muted)",
   } satisfies CSSProperties,
+  metricHead: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    minHeight: 20,
+  } satisfies CSSProperties,
   metricValue: { fontSize: 26, fontWeight: 700, marginTop: 8 } satisfies CSSProperties,
-  metricValueMuted: { fontSize: 26, fontWeight: 700, marginTop: 8, color: "var(--text-muted)" } satisfies CSSProperties,
   metricUnit: { fontSize: 14, fontWeight: 500, color: "var(--text-secondary)" } satisfies CSSProperties,
-  scaffoldTag: { fontSize: 11, color: "var(--text-muted)", marginTop: 4 } satisfies CSSProperties,
+  caption: { fontSize: 12, color: "var(--text-muted)", marginTop: -4 } satisfies CSSProperties,
+  donutWrap: { display: "flex", justifyContent: "center", padding: "8px 0" } satisfies CSSProperties,
   panels: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 } satisfies CSSProperties,
   panel: {
     border: "1px solid var(--border)",
@@ -42,5 +48,4 @@ export const s = {
     padding: "8px 0",
     borderTop: "1px solid var(--border)",
   } satisfies CSSProperties,
-  scaffoldBox: { padding: "8px 0" } satisfies CSSProperties,
 } as const;

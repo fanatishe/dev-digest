@@ -30,6 +30,17 @@ for the rubric.
   tally intentionally spans *all* of the PR's reviews. New fields are additive +
   `nullish`, so no DB migration and no response-schema break. (2026-07-09)
 
+- **Adding a built-in reviewer agent = 3 lockstep edits, all keyed by name so re-seeding
+  is safe.** (1) a prompt constant in `db/seed-prompts.ts`; (2) a byte-mirrored
+  `docs/agent-prompts/<slug>.md` (the seed-prompts header mandates the mirror, and the
+  `.md` body === the constant body verbatim); (3) a block in `db/seed.ts`. In the seed,
+  insert skills via `skillsRepo.insert({ workspaceId, ...s, enabled: true })` — it
+  **auto-snapshots v1** into `skill_versions`, so do NOT hand-insert versions (a raw-SQL
+  seed from another repo will; this one must not). Link with
+  `agentsRepo.linkSkill(agentId, skillId, order)` (idempotent upsert). Agents/skills are
+  insert-if-missing by `(workspaceId, name)`, so `pnpm db:seed` is additive + safe to
+  re-run. Run/verify with `tsx src/db/seed.ts` after `set -a; . ./.env`. (2026-07-11)
+
 ## Tool & Library Notes
 <!-- Quirks and gotchas of dependencies/tooling. -->
 
@@ -46,8 +57,25 @@ for the rubric.
 ## Recurring Errors & Fixes
 <!-- An error seen more than once + its fix. -->
 
+- **`TS1160: Unterminated template literal` after adding a prompt to `seed-prompts.ts`.**
+  Every backtick INSIDE a reviewer prompt is escaped (\\\`code\\\`), but the constant's
+  CLOSING delimiter must be a PLAIN backtick + `;` (`…null.` then `` `; ``). Copy-editing
+  a new constant off an existing one easily escapes the closing backtick too, so the
+  string never terminates and the whole file fails to parse. Fix: unescape the final
+  backtick. (2026-07-11)
+
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-11 (API Contract Reviewer seed)
+Ported the API Contract Reviewer agent + 4 contract skills (breaking-change,
+response-schema, semver-discipline, deprecation-policy) from a parallel project's seed,
+adapted to local conventions (SkillsRepository/AgentsRepository, DEFAULT_PROVIDER/MODEL,
+prompt constant + mirrored docs/agent-prompts/*.md — NOT the parallel file's raw inserts /
+openai-gpt4.1 / inline prompts). Also filled the pre-existing missing
+`docs/agent-prompts/test-quality-reviewer.md`. Verified against the live DB: seed run
+twice → exactly one agent, 4 skills linked in order 0–3, no dupes. typecheck + 110 unit
+tests green.
 
 ### 2026-07-11 (skills v2)
 Added the skill Versions/Stats surface. `skill_versions.message` is the first real

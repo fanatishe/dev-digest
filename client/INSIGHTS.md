@@ -34,6 +34,17 @@ for the rubric.
   dialog and steals focus mid-typing. Store previously-focused element on mount, restore
   it on unmount. (2026-07-10)
 
+- **A line-numbered / syntax-highlighted code editor = transparent-caret `<textarea>`
+  layered over a highlighted `<pre>` + a gutter, no editor lib.** `vendor/ui/kit/CodeEditor.tsx`
+  is the pattern: three stacked layers must share IDENTICAL font, `padding`, and a fixed
+  numeric `line-height` (px, not unitless) or the caret drifts from the rendered text.
+  Set the textarea `color:transparent` + `caretColor:var(--text-primary)`, `wrap="off"`,
+  and on its `onScroll` mirror `scrollTop/Left` onto the `<pre>` and gutter. Highlight
+  by rendering React nodes per line (a regex pass — headings/list-markers/fences), NOT
+  `dangerouslySetInnerHTML`, so there's no escaping/injection concern. Native `placeholder`
+  is invisible under `color:transparent` — render the placeholder in the `<pre>` layer
+  when `value===""` instead. Drop-in for `<Textarea>` (same value/onChange/rows). (2026-07-11)
+
 ## What Doesn't Work
 <!-- Dead ends and antipatterns. The most valuable section — don't skip it. -->
 
@@ -121,6 +132,20 @@ for the rubric.
   larger follow-up. Dropping a redundant page-level `"use client"` (as on `/onboarding`,
   a pure wrapper) also makes it statically prerenderable → smaller first-load JS. (2026-07-10)
 
+- **The sidebar is fully data-driven — adding a nav section/item is a `vendor/ui/nav.ts`
+  edit only.** `shell/Sidebar.tsx` `.map`s over `NAV` groups (renders each `section`
+  header) and appends `SETTINGS_ITEM`; `activeKeyFor()` (`components/app-shell/helpers.ts`)
+  already reserves keys for not-yet-built routes (conventions/eval/memory/…), so no
+  renderer change is needed. The Pull Requests count badge is ALSO already wired —
+  Sidebar injects `badge: String(ctx.prCount)` onto the `pulls` item when `ctx.prCount`
+  is set; don't add a static badge in `nav.ts`. Only list items whose pages exist —
+  a nav item pointing at a missing route just 404s. (2026-07-11)
+
+- **A new `@devdigest/ui` primitive that uses hooks/refs does NOT need a `"use client"`
+  directive.** No file in `vendor/ui/kit/` declares it — not even `Modal.tsx` (3 hooks).
+  They inherit the client boundary from the `"use client"` app pages that render them.
+  Match that: don't sprinkle `"use client"` on design-system components. (2026-07-11)
+
 ## Tool & Library Notes
 <!-- Quirks and gotchas of dependencies/tooling. -->
 
@@ -152,6 +177,16 @@ for the rubric.
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-11 (Skills Lab design pass)
+Aligned the Skills screen to new designs (delta pass — feature already existed). (1)
+Split the single-group sidebar into WORKSPACE (Pull Requests) + SKILLS LAB (Skills,
+Agents) — pure `nav.ts` edit; omitted the unbuilt GLOBAL/Conventions/Eval/… items. (2)
+New `vendor/ui/kit/CodeEditor.tsx` (textarea-overlay, line numbers + md highlight) swapped
+into ConfigTab's body field. (3) StatsTab given its final layout — real used_by/agents
+list + SAMPLE pull%/accept%(ring)/findings/by-category `Donut`, with an honest "sample
+data until reviews attribute findings" caption; no backend/schema change. Typecheck +
+60 tests green (+4 CodeEditor).
 
 ### 2026-07-11 (self-review fixes)
 Post-refactor review caught 3 latent bugs, now fixed: (1) `Modal`'s a11y key handler

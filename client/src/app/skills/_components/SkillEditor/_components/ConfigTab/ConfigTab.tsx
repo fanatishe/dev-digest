@@ -3,7 +3,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { FormField, TextInput, SelectInput, Textarea, Toggle, Button, Badge } from "@devdigest/ui";
+import { FormField, TextInput, SelectInput, CodeEditor, Toggle, Button, Badge } from "@devdigest/ui";
 import type { Skill, SkillType } from "@devdigest/shared";
 import { useCreateSkill, useUpdateSkill, useDeleteSkill } from "@/lib/hooks/skills";
 import { useToast } from "@/lib/toast";
@@ -140,7 +140,7 @@ export function ConfigTab({
             <div style={{ flex: 1 }} />
             <span style={s.tokens}>{t("config.tokens", { count: approxTokens(body) })}</span>
           </div>
-          <Textarea value={body} onChange={setBody} rows={16} mono />
+          <CodeEditor value={body} onChange={setBody} rows={16} ariaLabel={t("config.bodyLabel")} />
         </div>
       </FormField>
 

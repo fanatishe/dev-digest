@@ -95,8 +95,7 @@
     "open": "Open",
     "noAgents": "No agents use this skill yet.",
     "findingsByCategory": "Findings by category",
-    "scaffold": "Available in a later lesson",
-    "scaffoldNote": "Pull frequency, accept rate and finding attribution arrive once reviews tag the skills that produced each finding."
+    "sampleData": "Pull frequency, accept rate and finding attribution show sample data until reviews tag the skills that produced each finding (a later lesson)."
   },
   "evals": {
     "title": "Skill evals",

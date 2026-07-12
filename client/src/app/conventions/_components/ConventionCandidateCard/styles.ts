@@ -17,7 +17,23 @@ export const s = {
     borderLeft: `3px solid ${accepted ? "var(--ok)" : "var(--warn)"}`,
   }),
   main: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12 } as React.CSSProperties,
-  rule: { fontSize: 15, fontWeight: 600, fontStyle: "italic", color: "var(--text-primary)" } as React.CSSProperties,
+  /** Rule text + its edit affordance; the text itself is the click target. */
+  ruleRow: { display: "flex", alignItems: "flex-start", gap: 8 } as React.CSSProperties,
+  rule: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 15,
+    fontWeight: 600,
+    fontStyle: "italic",
+    color: "var(--text-primary)",
+    cursor: "text",
+    borderRadius: 6,
+    // Matches the textarea's padding so the text doesn't shift when edit mode opens.
+    padding: "2px 4px",
+    margin: "-2px -4px",
+  } as React.CSSProperties,
+  editWrap: { display: "flex", flexDirection: "column", gap: 8 } as React.CSSProperties,
+  editActions: { display: "flex", alignItems: "center", gap: 8 } as React.CSSProperties,
   evidence: {
     borderRadius: 8,
     border: "1px solid var(--border)",

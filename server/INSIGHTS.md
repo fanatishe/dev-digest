@@ -67,6 +67,37 @@ for the rubric.
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
 
+### 2026-07-12 (Live progress for conventions extract — the RunBus is generic)
+**`RunBus` + `GET /runs/:id/events` are NOT review-specific** — the bus is keyed by an
+arbitrary string and the SSE route never reads the DB (it just `getContext`s for auth, then
+subscribes). So ANY long operation can stream progress with almost no plumbing: the client
+mints a UUID, passes it as `scan_id` on the POST, and subscribes to `/runs/{scan_id}/events`.
+No `agent_runs` row, no new route, no new endpoint. The bus **buffers and replays**, so a
+subscriber that connects a moment after the POST still gets every event from the start — the
+handshake isn't racy. Used this to stream the conventions extractor's 4 stages. Two things
+that matter for honesty: (1) emit a **`start` event before each stage, not just a `done`
+after** — the `analyze` (model) stage dominates the wall clock, so a done-only stream leaves
+the UI silent for ~90% of the scan; (2) publish an `error` event in `catch` and ALWAYS
+`bus.complete(id)` in `finally`, or a failed scan leaves the client's EventSource hanging
+open with a half-finished stage list. Typed the payload as `ConventionScanProgress`
+(`{stage, status}`) on the free-form `RunEvent.data` field. `scan_id` is optional — omit it
+and extract behaves exactly as before, publishing nothing.
+
+### 2026-07-12 (Conventions evidence pinned to a commit)
+Added `conventions.evidence_sha` (migration 0012) so the client can deep-link a rule's
+evidence to github.com at the commit it was read from — without a sha you can only link to
+a branch, and the cited line numbers drift as soon as the repo moves on. Three things worth
+knowing. (1) **Generate migrations, don't hand-write them**: `pnpm db:generate` (drizzle-kit)
+also writes `meta/NNNN_snapshot.json` + the `_journal.json` entry; a hand-written `.sql`
+leaves the snapshot stale and the NEXT generate then emits a duplicate ALTER. Re-running
+generate and getting "No schema changes" is a cheap consistency check. (2) The git port's
+`currentHead()` takes a `RepoRef` = `{owner, name}` (`vendor/shared/adapters.ts:98`), but
+conventions' `repository.repoRef()` selected only `{name, fullName}` — had to add `owner`.
+(3) Resolving HEAD is **best-effort** (try/catch → null), mirroring `safeCurrentHead` in
+repo-intel's full pipeline: a clone that isn't a git repo must not fail an otherwise-good
+extraction — you lose the deep-link, not the conventions. The column is nullable precisely
+so pre-existing rows degrade to "no link" rather than to a link citing the wrong commit.
+
 ### 2026-07-11 (Conventions extractor)
 Built the `modules/conventions` extractor (L02). Heavily pre-scaffolded: the
 `conventions` table (already in `0000_init.sql` — no migration), the `ConventionCandidate`

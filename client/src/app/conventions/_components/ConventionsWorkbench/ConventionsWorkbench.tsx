@@ -10,21 +10,26 @@ import { AppShell } from "@/components/app-shell";
 import { Button, EmptyState, ErrorState, Skeleton } from "@devdigest/ui";
 import { useActiveRepo } from "@/lib/repo-context";
 import { useToast } from "@/lib/toast";
+import { useConfirm } from "@/lib/confirm";
 import {
   useConventions,
   useExtractConventions,
   useAcceptConvention,
   useRejectConvention,
+  useScanProgress,
 } from "@/lib/hooks/conventions";
 import { ConventionCandidateCard } from "../ConventionCandidateCard";
 import { CreateSkillModal } from "../CreateSkillModal";
+import { ScanProgress } from "../ScanProgress";
 import { s } from "./styles";
 
 export function ConventionsWorkbench() {
   const t = useTranslations("conventions");
   const toast = useToast();
+  const confirm = useConfirm();
   const { repoId, activeRepo } = useActiveRepo();
   const repoName = activeRepo?.name ?? t("page.repoFallback");
+  const repoFullName = activeRepo?.full_name ?? null;
 
   const { data: candidates, isLoading, isError, refetch } = useConventions(repoId);
   const extract = useExtractConventions(repoId ?? "");
@@ -32,17 +37,40 @@ export function ConventionsWorkbench() {
   const reject = useRejectConvention(repoId ?? "");
 
   const [modalOpen, setModalOpen] = React.useState(false);
+  // Minted per scan; keys the SSE stream the server publishes stage events to.
+  const [scanId, setScanId] = React.useState<string | null>(null);
+  const scan = useScanProgress(scanId);
 
   const list = candidates ?? [];
   const acceptedCount = list.filter((c) => c.accepted).length;
   const busy = accept.isPending || reject.isPending;
+  const scanning = extract.isPending;
 
+  // A re-scan is a FULL replace server-side: it drops every existing candidate, taking
+  // accept state and any hand-edited rule text with it. Warn before destroying that work.
   const onRescan = async () => {
+    if (list.length > 0) {
+      const ok = await confirm({
+        title: t("page.rescanConfirm.title"),
+        message: t("page.rescanConfirm.message", { count: list.length }),
+        confirmLabel: t("page.rescanConfirm.confirm"),
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    const id = crypto.randomUUID();
+    setScanId(id);
     try {
-      await extract.mutateAsync();
+      await extract.mutateAsync(id);
     } catch {
       toast.error(t("page.extractionFailed"));
+    } finally {
+      setScanId(null); // closes the EventSource
     }
+  };
+
+  const onEditRule = (id: string, rule: string) => {
+    accept.mutate({ id, rule }, { onError: () => toast.error(t("page.editFailed")) });
   };
 
   const deselectAll = () => {
@@ -78,14 +106,19 @@ export function ConventionsWorkbench() {
             kind="secondary"
             icon="RefreshCw"
             onClick={onRescan}
-            disabled={!repoId || extract.isPending}
+            loading={scanning}
+            disabled={!repoId}
           >
-            {extract.isPending ? t("page.scanning") : t("page.rescan")}
+            {scanning ? t("page.scanning") : t("page.rescan")}
           </Button>
         </div>
 
         {!repoId ? (
           <EmptyState icon="ListChecks" title={t("page.noRepo")} />
+        ) : scanning ? (
+          // Replaces the (about to be discarded) list — a stale list under a spinner
+          // reads as "nothing is happening".
+          <ScanProgress scan={scan} repoName={repoName} />
         ) : isLoading ? (
           <div style={s.list}>
             <Skeleton height={140} />
@@ -121,8 +154,10 @@ export function ConventionsWorkbench() {
                 <ConventionCandidateCard
                   key={c.id}
                   candidate={c}
+                  repoFullName={repoFullName}
                   pending={busy}
                   onAccept={(next) => accept.mutate({ id: c.id, accepted: next })}
+                  onEditRule={(rule) => onEditRule(c.id, rule)}
                   onReject={() => reject.mutate(c.id)}
                 />
               ))}

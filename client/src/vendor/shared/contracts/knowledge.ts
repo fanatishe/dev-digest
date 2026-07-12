@@ -149,10 +149,34 @@ export const ConventionCandidate = z.object({
   rule: z.string(),
   evidence_path: z.string(),
   evidence_snippet: z.string(),
+  /**
+   * The clone's HEAD sha when the evidence was extracted. Pins the client's
+   * github.com blob deep-link to the exact commit the snippet was read from, so the
+   * cited line numbers can't drift. Null for candidates scanned before it was recorded.
+   */
+  evidence_sha: z.string().nullish(),
   confidence: z.number().min(0).max(1),
   accepted: z.boolean(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+
+/**
+ * The extractor's four pipeline stages, in order. `analyze` is the slow one (the model
+ * call) — the UI leans on these to show WHICH stage is running, not just that something is.
+ */
+export const ConventionScanStage = z.enum(['sample', 'analyze', 'verify', 'persist']);
+export type ConventionScanStage = z.infer<typeof ConventionScanStage>;
+
+/**
+ * Progress payload carried on a `RunEvent.data` during an extract, streamed over the
+ * existing `/runs/:id/events` SSE endpoint keyed by a client-generated `scan_id`.
+ * Each stage emits `start` then `done`; the human-readable line is the `RunEvent.msg`.
+ */
+export const ConventionScanProgress = z.object({
+  stage: ConventionScanStage,
+  status: z.enum(['start', 'done']),
+});
+export type ConventionScanProgress = z.infer<typeof ConventionScanProgress>;
 
 /**
  * An unsaved skill draft built by merging a repo's ACCEPTED conventions into a

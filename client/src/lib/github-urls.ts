@@ -17,6 +17,32 @@ export function githubPrUrl(repoFullName: string, number: number): string {
   return `${HOST}/${repoFullName}/pull/${number}`;
 }
 
+/** A convention's cited evidence, split back into the parts a blob URL needs. */
+export interface EvidenceRef {
+  file: string;
+  start?: number;
+  end?: number;
+}
+
+/**
+ * Parse a convention's `evidence_path` — the server packs it as `"file:start-end"` (or
+ * `"file:start"` for a single line; see the extractor's `verifyEvidence`). Splits on the
+ * LAST colon so a path that itself contains one can't corrupt the parse, and falls back
+ * to a bare path (no line anchor) when the suffix isn't a line spec.
+ */
+export function parseEvidencePath(evidencePath: string): EvidenceRef {
+  const i = evidencePath.lastIndexOf(":");
+  if (i <= 0) return { file: evidencePath };
+
+  const file = evidencePath.slice(0, i);
+  const m = /^(\d+)(?:-(\d+))?$/.exec(evidencePath.slice(i + 1));
+  if (!m) return { file: evidencePath };
+
+  const start = Number(m[1]);
+  const end = m[2] != null ? Number(m[2]) : undefined;
+  return end != null ? { file, start, end } : { file, start };
+}
+
 /**
  * https://github.com/{owner}/{repo}/blob/{sha}/{file}#L{start}[-L{end}]
  * `sha` pins the link to the PR's head so line numbers stay accurate.

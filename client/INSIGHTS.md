@@ -178,6 +178,24 @@ for the rubric.
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
 
+### 2026-07-12 (Conventions: inline rule edit + evidence deep-link)
+Closed two gaps on `ConventionCandidateCard` that were **pure UI wiring over a backend that
+already worked**: `PATCH /conventions/:id` accepted `{rule}` and `useAcceptConvention` already
+sent it — no UI ever called it with a rule, so inline edit needed ZERO hook/server change.
+Worth internalising: before building a "missing" feature here, check whether the hook and
+route already support it. Details. (1) The rule editor copies `InlineComposer`'s shape
+(Textarea + Save/Cancel, Esc cancels, Cmd/Ctrl+Enter saves) — the house precedent for
+edit-in-place; there is still no generic `EditableText` primitive. (2) `evidence_path` is a
+PACKED string (`"file:23-25"`), not structured fields, so linking it needs a parser — added
+`parseEvidencePath` next to the existing `githubBlobUrl` in `lib/github-urls.ts` (splits on
+the LAST colon; a non-numeric suffix falls back to a bare path). Reuse `githubBlobUrl`; don't
+write a second URL builder. (3) `MonoLink` already emits `<a target="_blank"
+rel="noopener noreferrer">` when given `href` — it IS the GitHub-link primitive; render plain
+text (not an href-less MonoLink, which becomes a pointless `<button>`) when there's nothing
+to link to. Link only when repo full_name AND `evidence_sha` are both present. (4) Re-scan is
+a destructive full replace server-side, so it silently ate hand-edited rules — gated it behind
+the existing `useConfirm()`. Typecheck + 83 tests green (+19).
+
 ### 2026-07-11 (Conventions tab + Skill Dynamics)
 Built the Conventions tab (Skills Lab). Mostly wiring — `messages/en/conventions.json`,
 the `ConventionCandidate` contract, the `/conventions` key in `activeKeyFor`, and the

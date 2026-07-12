@@ -20,6 +20,14 @@ import { ConventionsService } from './service.js';
  * nothing — the client edits it then confirms via `POST /skills`.
  */
 
+/**
+ * `scan_id` is optional: a caller that doesn't want live progress (or an old client)
+ * simply omits it and the extract runs exactly as before, publishing nothing.
+ */
+const ExtractBody = z
+  .object({ scan_id: z.string().uuid().optional() })
+  .optional();
+
 const PatchConventionBody = z.object({
   accepted: z.boolean().optional(),
   rule: z.string().min(1).optional(),
@@ -31,12 +39,38 @@ export default async function conventionsRoutes(appBase: FastifyInstance) {
 
   app.post(
     '/repos/:id/conventions/extract',
-    { schema: { params: IdParams } },
+    { schema: { params: IdParams, body: ExtractBody } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      const candidates = await service.extract(workspaceId, req.params.id, (m) => req.log.info(m));
-      if (candidates === undefined) throw new NotFoundError('Repo not found');
-      return candidates;
+      // The client generates `scan_id` up front and subscribes to `/runs/:scan_id/events`
+      // so it can watch the pipeline live. The bus buffers and replays, so a subscriber
+      // that connects a moment after this POST still receives every stage from the start.
+      const scanId = req.body?.scan_id;
+      const bus = app.container.runBus;
+
+      try {
+        const candidates = await service.extract(workspaceId, req.params.id, (e) => {
+          req.log.info(`Conventions: ${e.msg}`);
+          if (scanId) {
+            bus.publish(scanId, e.status === 'done' ? 'result' : 'info', e.msg, {
+              stage: e.stage,
+              status: e.status,
+            });
+          }
+        });
+        if (candidates === undefined) throw new NotFoundError('Repo not found');
+        return candidates;
+      } catch (err) {
+        // Surface the failure ON the stream too — otherwise the client's stage list just
+        // stops mid-scan with no explanation when the model call blows up.
+        if (scanId) {
+          bus.publish(scanId, 'error', err instanceof Error ? err.message : 'Extraction failed');
+        }
+        throw err;
+      } finally {
+        // Always end the stream, success or failure, or the EventSource hangs open.
+        if (scanId) bus.complete(scanId);
+      }
     },
   );
 

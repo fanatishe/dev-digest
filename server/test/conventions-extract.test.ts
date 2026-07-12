@@ -4,6 +4,7 @@ import {
   renderSkillBody,
   slugify,
   clamp01,
+  toCandidate,
   type RawCandidate,
 } from '../src/modules/conventions/helpers.js';
 import type { ConventionRow } from '../src/modules/conventions/repository.js';
@@ -94,6 +95,7 @@ describe('renderSkillBody', () => {
       rule: 'Always use async/await',
       evidencePath: 'src/api/users.ts:23-25',
       evidenceSnippet: 'const u = await db.find(id);',
+      evidenceSha: 'a1b2c3d',
       confidence: 0.91,
       accepted: true,
     },
@@ -107,5 +109,34 @@ describe('renderSkillBody', () => {
     expect(body).toContain('Always use async/await');
     expect(body).toContain('Detected in `src/api/users.ts:23-25`:');
     expect(body).toContain('const u = await db.find(id);');
+  });
+});
+
+/**
+ * `evidence_sha` pins the client's github.com blob link to the commit the snippet was
+ * actually read at. It is nullable: rows scanned before the column existed (and clones
+ * whose HEAD couldn't be resolved) carry no sha, and must degrade to "no link" rather
+ * than to a link pointing at the wrong commit.
+ */
+describe('toCandidate', () => {
+  const row = (over: Partial<ConventionRow> = {}): ConventionRow => ({
+    id: '1',
+    workspaceId: 'w',
+    repoId: 'r',
+    rule: 'Always use async/await',
+    evidencePath: 'src/api/users.ts:23-25',
+    evidenceSnippet: 'const u = await db.find(id);',
+    evidenceSha: 'a1b2c3d4e5f6',
+    confidence: 0.91,
+    accepted: true,
+    ...over,
+  });
+
+  it('surfaces the scanned commit sha to the client contract', () => {
+    expect(toCandidate(row()).evidence_sha).toBe('a1b2c3d4e5f6');
+  });
+
+  it('maps a row with no recorded sha to null rather than throwing', () => {
+    expect(toCandidate(row({ evidenceSha: null })).evidence_sha).toBeNull();
   });
 });

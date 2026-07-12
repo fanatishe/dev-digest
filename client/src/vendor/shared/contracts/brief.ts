@@ -10,6 +10,21 @@ export const Intent = z.object({
   intent: z.string(),
   in_scope: z.array(z.string()),
   out_of_scope: z.array(z.string()),
+  /**
+   * Short chip labels for the areas this PR puts at risk (e.g. "Auth surface
+   * touched"). Deliberately `string[]` and not the richer `Risk` — the intent
+   * classifier never sees the hunk BODIES, so it cannot ground a `file_refs`
+   * or a severity without inventing one.
+   */
+  risk_areas: z.array(z.string()).nullish(),
+  /**
+   * Which rungs of the source ladder actually fired, e.g. `["pr_body",
+   * "issue #123"]` or, for a PR with no description at all, `["title",
+   * "branch", "commits", "files"]`. Makes the degradation VISIBLE: the reader
+   * can always tell whether the machine read a real spec or inferred the intent
+   * from a branch name.
+   */
+  derived_from: z.array(z.string()).nullish(),
 });
 export type Intent = z.infer<typeof Intent>;
 

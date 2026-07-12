@@ -56,8 +56,28 @@ export const ReviewRunResponse = z.object({
 });
 export type ReviewRunResponse = z.infer<typeof ReviewRunResponse>;
 
-/** Intent persisted for a PR (the Intent plus the pr_id it scopes). */
-export const PrIntentRecord = Intent.extend({ pr_id: z.string() });
+/**
+ * Intent persisted for a PR (the Intent plus the pr_id it scopes) with the
+ * provenance of the scan that produced it. All additions are nullish: a row
+ * written before these columns existed still parses.
+ *
+ * `tokens_saved` is deliberately absent — it is `tokens_full - tokens_headers`,
+ * derived on read rather than stored.
+ */
+export const PrIntentRecord = Intent.extend({
+  pr_id: z.string(),
+  /** The PR head the intent was derived from; drives the "stale" badge. */
+  head_sha: z.string().nullish(),
+  provider: z.string().nullish(),
+  model: z.string().nullish(),
+  /** Tokens the FULL diff (with hunk bodies) would have cost. */
+  tokens_full: z.number().int().nullish(),
+  /** Tokens the headers-only rendering actually cost. */
+  tokens_headers: z.number().int().nullish(),
+  computed_at: z.string().nullish(),
+  /** Computed on read: the PR's head has moved since the intent was derived. */
+  is_stale: z.boolean().nullish(),
+});
 export type PrIntentRecord = z.infer<typeof PrIntentRecord>;
 
 /** Smart-diff response for a PR (the SmartDiff). */

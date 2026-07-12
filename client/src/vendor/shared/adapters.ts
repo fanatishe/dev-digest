@@ -61,6 +61,21 @@ export interface StructuredRequest<T> {
   maxTokens?: number;
   timeoutMs?: number;
   maxRetries?: number;
+  /**
+   * OpenRouter session id — groups related generations (e.g. all map-reduce
+   * chunks of one review) into a session in the OpenRouter dashboard. Sent as
+   * the `session_id` body field; ignored by providers that don't support it.
+   */
+  sessionId?: string;
+  /**
+   * OpenRouter reasoning control. Reasoning-capable flash models (e.g.
+   * `deepseek/deepseek-v4-flash`) will otherwise spend reasoning tokens on
+   * trivial extractions — which is billed as output and quietly undoes the
+   * cost saving that made a flash model the right choice. Set
+   * `{ enabled: false }` for mechanical structured extraction.
+   * Sent as the `reasoning` body field; ignored by providers that don't support it.
+   */
+  reasoning?: { enabled: boolean };
 }
 
 export interface StructuredResult<T> {

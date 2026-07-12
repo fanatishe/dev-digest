@@ -41,8 +41,58 @@ for the rubric.
   insert-if-missing by `(workspaceId, name)`, so `pnpm db:seed` is additive + safe to
   re-run. Run/verify with `tsx src/db/seed.ts` after `set -a; . ./.env`. (2026-07-11)
 
+- **A "we excluded the diff bodies" saving is a RENDERING claim, not a parsing one.**
+  `parseUnifiedDiff` already drops line text — `DiffHunk` carries positions
+  (`oldStart`/`newStart`/`newLineNumbers`) and no `+/-` text; the bodies survive ONLY in
+  `UnifiedDiff.raw`. So any such measurement must count **two renderings of the same
+  parsed diff** (`tokenizer.count(diff.raw)` vs `tokenizer.count(renderHeadersOnly(diff))`),
+  with the same tokenizer, or it is measuring nothing. Corollary for testing: pin the
+  guarantee **structurally** — assert every output line is a file header or an `@@` header,
+  not merely that one known body string is absent. A substring assertion only proves that
+  *one* body line is gone. (2026-07-12, Intent Layer)
+
+- **A pure helper is the right place for an SSRF / path-traversal gate.**
+  `repoIntel.getFileContent` → `readClone` does a bare `join(clonePath, file)` with no
+  traversal check, so anything feeding it a path derived from user content (e.g. a doc
+  link in a PR body) must validate FIRST. Keeping `isSafeRepoPath` / `parseDocRefs` pure
+  makes that gate unit-testable with no clone and no DB — and it forces the honest
+  design: external URLs are RECORDED and shown as "unresolved reference", never fetched.
+  (A server-side fetch of an attacker-controlled URL from a PR body is an SSRF vector —
+  `http://169.254.169.254/...` is the canonical payload.) (2026-07-12)
+
+- **`server/src/modules` has ZERO module→module imports** (only `settings/feature-models`
+  is shared). Conventions stayed self-contained by consuming a *container facade*
+  (`repoIntel`). Before proposing a new module, check whether the facade it would need
+  actually EXISTS — if it doesn't, you are inventing a boundary, not following one. The
+  Intent Layer folded into `modules/reviews` for exactly this reason: it needs
+  `diff-loader` + the `pr_intent` accessors, and there is no diff facade. (2026-07-12)
+
+- **`adapters/llm/pricing.ts` drifts and then silently LIES.** Reconciled 2026-07-12
+  against the live OpenRouter `/api/v1/models`: `deepseek-v4-flash` was listed ~1.8×
+  too high, `z-ai/glm-4.7-flash` was listed as FREE (`{in:0,out:0}` — it is not), and
+  `glm-4.7-flashx` no longer exists as a model id. Real spend comes from OpenRouter's
+  `usage.cost` when present, so the table is only the fallback — but it IS live whenever
+  cost is absent. **Any feature whose selling point is cost must fix the row for the
+  model it defaults to, or its own cost telemetry is fiction.** (2026-07-12)
+
 ## Tool & Library Notes
 <!-- Quirks and gotchas of dependencies/tooling. -->
+
+- **`review_intent` defaults to the `openrouter` provider**, so a test injecting
+  `MockLLMProvider` on the `openai` key silently falls through to real provider
+  construction and dies on a missing key. Inject on `llm: { openrouter: … }` for anything
+  routed through `resolveFeatureModel(…, 'review_intent')`. Likewise, a `Fixes #NNN` in a
+  test PR body makes `container.github()` resolve a REAL token from
+  `~/.devdigest/secrets.json`/`process.env` and hit the network — and the service's
+  best-effort `try/catch` HIDES it. Integration tests that seed an issue reference must
+  inject `github: new MockGitHubClient()`. (2026-07-12)
+
+- **The shared `now()` helper hard-names its column `created_at`.** If you want a
+  differently-named timestamp (e.g. `computed_at` on a row that is UPSERTed on every
+  recompute — it records the latest scan, not a birth), declare
+  `timestamp('computed_at', { withTimezone: true }).defaultNow().notNull()` explicitly.
+  Using `now()` and expecting your own name gives you a migration with the wrong column.
+  (2026-07-12)
 
 - **You can read a `.zip` with zero dependencies via `node:zlib`.** The skills
   import (`modules/skills/import.ts`) parses the ZIP central directory by hand

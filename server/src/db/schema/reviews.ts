@@ -45,6 +45,18 @@ export const findings = pgTable('findings', {
   dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
 });
 
+/**
+ * The Intent Layer: what this PR was TRYING to do, derived by one cheap model
+ * call over PR metadata + hunk HEADERS only (never the diff bodies).
+ *
+ * `tokensFull` vs `tokensHeaders` is the receipt for that trick — what the full
+ * diff would have cost vs. what we actually sent. `tokens_saved` is NOT stored:
+ * it is the difference, derived on read.
+ *
+ * `headSha` pins the intent to the commit it was derived from, so a PR whose
+ * head has since moved can be shown as stale (same idea as
+ * `pull_requests.lastReviewedSha`).
+ */
 export const prIntent = pgTable('pr_intent', {
   prId: uuid('pr_id')
     .primaryKey()
@@ -52,6 +64,19 @@ export const prIntent = pgTable('pr_intent', {
   intent: text('intent').notNull(),
   inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /** Short chip labels ("Auth surface touched") — not the richer `Risk`: the
+      classifier never sees hunk bodies, so it cannot ground file refs. */
+  riskAreas: jsonb('risk_areas').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /** Which rungs of the source ladder fired — makes degradation visible. */
+  derivedFrom: jsonb('derived_from').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  headSha: text('head_sha'),
+  provider: text('provider'),
+  model: text('model'),
+  tokensFull: integer('tokens_full'),
+  tokensHeaders: integer('tokens_headers'),
+  /** Not the shared `now()` helper: that one is named `created_at`, and this row
+      is UPSERTed on every recompute — it records the latest scan, not a birth. */
+  computedAt: timestamp('computed_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const prBrief = pgTable('pr_brief', {

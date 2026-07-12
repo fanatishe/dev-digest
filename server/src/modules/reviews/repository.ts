@@ -13,8 +13,8 @@ import type { Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
  * composes them so its public API stays identical.
  */
 
-import type { FindingRow, PullRow } from '../../db/rows.js';
-export type { FindingRow, PullRow };
+import type { FindingRow, PrIntentRow, PullRow } from '../../db/rows.js';
+export type { FindingRow, PrIntentRow, PullRow };
 
 export type ReviewRow = typeof t.reviews.$inferSelect;
 
@@ -125,14 +125,29 @@ export class ReviewRepository {
     return reviewRepo.setFindingDismissed(this.db, findingId, at);
   }
 
+  /** Commit messages for a PR (oldest first) — rung 6 of the intent ladder. */
+  getPrCommits(prId: string): Promise<(typeof t.prCommits.$inferSelect)[]> {
+    return pullRepo.getPrCommits(this.db, prId);
+  }
+
   // ---- intent -------------------------------------------------------------
 
-  upsertIntent(prId: string, intent: Intent): Promise<void> {
-    return pullRepo.upsertIntent(this.db, prId, intent);
+  /** Upsert the PR's intent + its provenance (head sha, model, token receipt). */
+  upsertIntent(
+    prId: string,
+    intent: Intent,
+    provenance: pullRepo.IntentProvenance,
+  ): Promise<PrIntentRow> {
+    return pullRepo.upsertIntent(this.db, prId, intent, provenance);
   }
 
   getIntent(prId: string): Promise<Intent | undefined> {
     return pullRepo.getIntent(this.db, prId);
+  }
+
+  /** The stored row incl. provenance — `PrIntentRecord`/`is_stale` are built from it. */
+  getIntentRow(prId: string): Promise<PrIntentRow | undefined> {
+    return pullRepo.getIntentRow(this.db, prId);
   }
 
   // ---- observability: agent_runs + run_traces ----------------------------

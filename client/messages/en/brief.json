@@ -10,6 +10,23 @@
   "overlap": "{count} overlap",
   "unavailable": "Brief not available yet.",
   "unavailableHint": "Run a review or open the PR to compute it.",
+  "intent": {
+    "inScope": "In scope",
+    "outOfScope": "Out of scope",
+    "riskAreas": "Risk areas",
+    "recompute": "Recompute intent",
+    "computing": "Deriving intent…",
+    "stale": "Stale",
+    "staleHint": "The PR head has moved since this intent was derived.",
+    "derivedFrom": "derived from: {sources}",
+    "tokens": "{full} → {headers} tokens ({pct}% saved)",
+    "tokensHint": "The intent is derived from hunk headers only — never the diff bodies.",
+    "empty": "No intent derived yet.",
+    "emptyHint": "Derive the scope of this PR from its title, description, branch, commits and changed files."
+  },
+  "blast": {
+    "empty": "Blast radius is not available yet."
+  },
   "why": {
     "title": "git-why",
     "blame": "blame",

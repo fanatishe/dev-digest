@@ -51,6 +51,24 @@ for the rubric.
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
 
+- **`Chip` (`vendor/ui`) renders a `<button>` — it is for INTERACTIVE filter chips only.**
+  For a static chip-looking label (e.g. the Intent card's risk areas) use `Badge` (a
+  `<span>`) with `bg="transparent"` + `style={{ border: "1px solid var(--border)" }}`. Same
+  look, no phantom buttons polluting `getAllByRole("button")` and screen-reader output.
+  (2026-07-12, Intent Layer)
+
+- **`SectionLabel`'s `right` slot is the house place for a card's header actions.** An
+  icon-only action there should be `<Button icon="…" loading={mutation.isPending}
+  aria-label={…} />`, NOT `IconBtn` — `IconBtn` has no `loading` state, and `Button`
+  spreads `ButtonHTMLAttributes`, so the `aria-label` that an icon-only control requires
+  actually type-checks. (2026-07-12)
+
+- **ICU quoting bites in `messages/en/*.json`:** an apostrophe is next-intl's escape
+  character, so write `"is not available"` rather than `"isn't available"` unless you
+  double it. Also pass PRE-FORMATTED numbers (`toLocaleString("en-US")`) into a message
+  instead of raw numbers, so a rendered string like `12,431 → 890 tokens (93% saved)` is
+  deterministic in tests. (2026-07-12)
+
 - **Native HTML5 drag-reorder should reorder by ID, not by list index.** The agent
   editor's Skills tab (`AgentEditor/_components/SkillsTab`) lets you filter the list
   AND drag to reorder. If `onDrop` reordered by the rendered index, a filtered view
@@ -119,6 +137,13 @@ for the rubric.
   passes it into `apiFetch`; queryFns are `({ signal }) => api.get(path, signal)` so
   navigating away / refetching cancels the in-flight request. Mutations don't take a
   signal. (2026-07-10)
+  - **CORRECTION (2026-07-12): this is no longer true — do not follow it.** The
+    `AbortSignal` param was reverted (see the 2026-07-11 audit note further down);
+    `src/lib/api.ts` is now `get: <T>(path: string) => apiFetch<T>(path)` — **no signal
+    param**. Write query fns as `queryFn: () => api.get(path)`. Left above rather than
+    deleted because two sessions in a row have been misled by it: a reverted change
+    whose INSIGHTS entry survives is more dangerous than no entry at all, because it is
+    read as high-confidence guidance.
 
 - **Per-route tab titles need a SERVER page — a `"use client"` page can't export
   `metadata`/`generateMetadata`.** Root `layout.tsx` sets

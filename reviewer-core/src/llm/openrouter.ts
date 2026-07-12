@@ -81,6 +81,12 @@ export class OpenRouterProvider implements LLMProvider {
         // OpenRouter usage accounting — ask it to return the REAL generation
         // cost (USD) in `usage.cost`, instead of estimating from a price book.
         ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
+        // Reasoning control. A reasoning-capable flash model (deepseek-v4-flash)
+        // will otherwise "think" through a mechanical extraction and bill those
+        // tokens as output — silently undoing the saving that made a flash model
+        // the right pick. Callers doing structured extraction send
+        // `{ enabled: false }`.
+        ...(this.id === 'openrouter' && req.reasoning ? { reasoning: req.reasoning } : {}),
       });
 
       // OpenRouter can return HTTP 200 with no `choices` (an upstream provider

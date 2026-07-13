@@ -10,7 +10,9 @@ interface PrDetailHeaderProps {
   pr: PrDetail;
   prId: string | null;
   tab: string;
-  findingsCount: number;
+  /** Every agent run on this PR, including running and failed ones — not the
+   *  findings they produced. The findings total lives in the tab body. */
+  runsCount: number;
   /** github.com PR URL; null when the repo's full_name isn't known yet. */
   githubUrl?: string | null;
   onSetTab: (tab: string) => void;
@@ -22,7 +24,7 @@ export function PrDetailHeader({
   pr,
   prId,
   tab,
-  findingsCount,
+  runsCount,
   githubUrl,
   onSetTab,
   onRunStart,
@@ -114,7 +116,7 @@ export function PrDetailHeader({
         pad="0"
         tabs={[
           { key: "overview", label: "Overview", icon: "FileText" },
-          { key: "findings", label: "Agent runs", icon: "AlertOctagon", count: findingsCount || undefined },
+          { key: "findings", label: "Agent runs", icon: "AlertOctagon", count: runsCount || undefined },
           { key: "diff", label: "Files changed", icon: "Code", count: pr.files_count },
         ]}
       />

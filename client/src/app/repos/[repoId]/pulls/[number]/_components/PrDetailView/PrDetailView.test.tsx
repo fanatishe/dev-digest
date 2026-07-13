@@ -102,6 +102,10 @@ const SMART: SmartDiff = {
 
 const INTENT: PrIntentRecord | null = null;
 
+/* Mutable so a test can vary the RUN count independently of the FINDING count —
+   the two must be distinguishable, or a test would pass with either wired in. */
+let PR_RUNS: { run_id: string; status: string }[] = [];
+
 vi.mock("@/lib/hooks", () => ({
   usePulls: () => ({ data: [{ id: "pr-1", number: 7 }], isLoading: false }),
   usePullDetail: () => ({ data: PR, isLoading: false, isError: false, error: null, refetch: vi.fn() }),
@@ -109,9 +113,13 @@ vi.mock("@/lib/hooks", () => ({
 vi.mock("@/lib/hooks/reviews", () => ({
   usePrReviews: () => ({ data: [REVIEW], refetch: vi.fn() }),
   usePrActiveRuns: () => ({ data: [] }),
-  usePrRuns: () => ({ data: [] }),
+  usePrRuns: () => ({ data: PR_RUNS }),
   useCancelRun: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteRun: () => ({ mutate: vi.fn(), isPending: false }),
+  // Needed only by the tests that actually open the Findings tab body, which
+  // renders ReviewRunAccordion + FindingsPanel.
+  useDeleteReview: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useFindingAction: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   usePrComments: () => ({ data: [] }),
   useCreatePrComment: () => ({ mutateAsync: vi.fn(), isPending: false }),
   // Used by the header's RunReviewDropdown, which renders inside this view.
@@ -134,6 +142,7 @@ beforeEach(() => {
   replace.mockClear();
   push.mockClear();
   search = new URLSearchParams("tab=diff");
+  PR_RUNS = [];
 });
 afterEach(cleanup);
 
@@ -179,5 +188,51 @@ describe("PrDetailView — finding badge deep-link", () => {
     expect(url.searchParams.get("tab")).toBe("findings");
     expect(url.searchParams.get("finding")).toBe("f1");
     expect(url.searchParams.get("severity")).toBe("CRITICAL");
+  });
+});
+
+/* The "Agent runs" tab used to be labelled for runs but counted FINDINGS
+   (`count: findingsCount`), so a PR with 3 runs and 1 finding read "Agent runs 1".
+
+   The fixture below deliberately makes the two numbers differ — 3 runs, 1 finding.
+   With equal numbers this test would pass with either value wired in, and would
+   not have caught the original bug. */
+describe("PrDetailView — the Agent runs tab counts RUNS, not findings", () => {
+  it("shows the run count on the tab, and never the finding count", () => {
+    PR_RUNS = [
+      { run_id: "run-1", status: "completed" },
+      { run_id: "run-2", status: "failed" },
+      { run_id: "run-3", status: "running" },
+    ];
+    renderView();
+
+    const tab = screen.getByRole("button", { name: /agent runs/i });
+    expect(tab).toHaveTextContent("3");
+    // The single finding from REVIEW must not leak onto the tab.
+    expect(tab).not.toHaveTextContent("1");
+  });
+
+  it("counts running and failed runs too — the tab ticks the moment a review starts", () => {
+    PR_RUNS = [{ run_id: "run-1", status: "running" }];
+    renderView();
+
+    // `reviews` holds no record for an in-flight run; counting it would show 1
+    // only because REVIEW happens to carry one finding. `prRuns` shows it at once.
+    expect(screen.getByRole("button", { name: /agent runs/i })).toHaveTextContent("1");
+  });
+
+  it("shows no count at all when the PR has never been reviewed", () => {
+    PR_RUNS = [];
+    renderView();
+
+    expect(screen.getByRole("button", { name: /agent runs/i })).toHaveTextContent(/^Agent runs$/);
+  });
+
+  it("surfaces the findings total in the tab body instead", () => {
+    PR_RUNS = [{ run_id: "run-1", status: "completed" }];
+    search = new URLSearchParams("tab=findings");
+    renderView();
+
+    expect(screen.getByText("1 finding")).toBeInTheDocument();
   });
 });

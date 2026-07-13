@@ -86,6 +86,10 @@ export function PrDetailView({ repoId, number }: { repoId: string; number: strin
   );
   const lethalTrifecta = allFindings.filter((f) => f.kind === "lethal_trifecta");
   const findingsCount = allFindings.length;
+  // The "Agent runs" tab counts RUNS, not findings — and it counts them from
+  // `prRuns` (every run, incl. running/failed) rather than `reviews` (only runs
+  // that landed a review record), so starting a review ticks the tab at once.
+  const runsCount = prRuns?.length ?? 0;
   // The diff badges anchor on the LATEST review's findings only (runs are
   // newest-first, and `kind: 'summary'` rows carry none) — stacking every past
   // run's findings onto the gutter would badge lines that a re-review cleared.
@@ -145,7 +149,7 @@ export function PrDetailView({ repoId, number }: { repoId: string; number: strin
         pr={pr}
         prId={prId}
         tab={tab}
-        findingsCount={findingsCount}
+        runsCount={runsCount}
         githubUrl={repoFullName ? githubPrUrl(repoFullName, pr.number) : null}
         onSetTab={setTab}
         onRunStart={() => setTab("findings")}
@@ -161,6 +165,7 @@ export function PrDetailView({ repoId, number }: { repoId: string; number: strin
             liveRunIds={liveRunIds}
             reviewRunning={reviewRunning}
             lethalTrifecta={lethalTrifecta}
+            findingsCount={findingsCount}
             runs={runs}
             prRuns={prRuns}
             prCommits={pr.commits}

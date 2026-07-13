@@ -1,4 +1,10 @@
 {
+  "reviewRuns": {
+    "title": "Review runs",
+    "hint": "grouped by run · newest first",
+    "findingsCount": "{count, plural, one {# finding} other {# findings}}",
+    "severityOnly": "{severity} only"
+  },
   "counts": {
     "header": "{count} findings",
     "filterBy": "Show only {severity} findings",

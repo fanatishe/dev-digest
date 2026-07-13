@@ -18,6 +18,9 @@ interface FindingsTabProps {
   liveRunIds: string[];
   reviewRunning: boolean;
   lethalTrifecta: FindingRecord[];
+  /** Findings across every run — surfaced here because the tab's own counter
+   *  now counts runs. */
+  findingsCount: number;
   runs: ReviewRecord[];
   prRuns: RunSummary[] | undefined;
   prCommits: PrCommit[];
@@ -43,6 +46,7 @@ export function FindingsTab({
   liveRunIds,
   reviewRunning,
   lethalTrifecta,
+  findingsCount,
   runs,
   prRuns,
   prCommits,
@@ -159,7 +163,11 @@ export function FindingsTab({
         </div>
       )}
 
-      <ReviewRunsHeader severity={severity} onClearSeverity={onClearSeverity} />
+      <ReviewRunsHeader
+        severity={severity}
+        findingsCount={findingsCount}
+        onClearSeverity={onClearSeverity}
+      />
       {runs.length === 0 ? (
         reviewRunning || liveRunIds.length > 0 ? null : (
           <EmptyState

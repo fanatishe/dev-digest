@@ -13,8 +13,8 @@ import type { Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
  * composes them so its public API stays identical.
  */
 
-import type { FindingRow, PullRow } from '../../db/rows.js';
-export type { FindingRow, PullRow };
+import type { FindingRow, PrIntentRow, PullRow } from '../../db/rows.js';
+export type { FindingRow, PrIntentRow, PullRow };
 
 export type ReviewRow = typeof t.reviews.$inferSelect;
 
@@ -30,6 +30,12 @@ export class ReviewRepository {
   getPull(workspaceId: string, prId: string): Promise<PullRow | undefined> {
     return pullRepo.getPull(this.db, workspaceId, prId);
   }
+
+  // NOTE: `pullRepo.getPullById` (workspace-FREE) is deliberately NOT exposed here.
+  // This facade hangs off `container.reviewRepo` and is reachable from every route,
+  // so an unscoped read on it would sit next to a request-supplied id in any HTTP
+  // handler. The intent job imports that module function directly from
+  // `./repository/pull.repo.js` — same module, no boundary crossed.
 
   getRepo(repoId: string): Promise<typeof t.repos.$inferSelect | undefined> {
     return pullRepo.getRepo(this.db, repoId);
@@ -125,14 +131,35 @@ export class ReviewRepository {
     return reviewRepo.setFindingDismissed(this.db, findingId, at);
   }
 
+  /** Commit messages for a PR (oldest first) — rung 6 of the intent ladder. */
+  getPrCommits(prId: string): Promise<(typeof t.prCommits.$inferSelect)[]> {
+    return pullRepo.getPrCommits(this.db, prId);
+  }
+
   // ---- intent -------------------------------------------------------------
 
-  upsertIntent(prId: string, intent: Intent): Promise<void> {
-    return pullRepo.upsertIntent(this.db, prId, intent);
+  /** Upsert the PR's intent + its provenance (head sha, model, token receipt). */
+  upsertIntent(
+    prId: string,
+    intent: Intent,
+    provenance: pullRepo.IntentProvenance,
+  ): Promise<PrIntentRow> {
+    return pullRepo.upsertIntent(this.db, prId, intent, provenance);
   }
 
   getIntent(prId: string): Promise<Intent | undefined> {
     return pullRepo.getIntent(this.db, prId);
+  }
+
+  /** Which of `prIds` already have an intent row. `pr_intent` belongs to THIS
+   *  module; `modules/pulls` reads it through this facade, never directly. */
+  prIdsWithIntent(prIds: string[]): Promise<string[]> {
+    return pullRepo.prIdsWithIntent(this.db, prIds);
+  }
+
+  /** The stored row incl. provenance — `PrIntentRecord`/`is_stale` are built from it. */
+  getIntentRow(prId: string): Promise<PrIntentRow | undefined> {
+    return pullRepo.getIntentRow(this.db, prId);
   }
 
   // ---- observability: agent_runs + run_traces ----------------------------

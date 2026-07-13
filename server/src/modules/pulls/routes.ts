@@ -1,13 +1,21 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { PrMeta, PrDetail, GitHubClient, PrReviewComment, FindingsCounts, FindingPreview } from '@devdigest/shared';
-import { PrCommentInput } from '@devdigest/shared';
+import type { PrMeta, PrDetail, GitHubClient, PrReviewComment, FindingsCounts, FindingPreview, SmartDiff } from '@devdigest/shared';
+import { PrCommentInput, SmartDiffResponse } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
+import { buildSmartDiff } from './smart-diff.js';
+import { INTENT_ENQUEUE_LIMIT, IntentJobPayload } from './constants.js';
+// Constant-only cross-module import — the established precedent
+// (`repos/service.ts` imports INDEX_JOB_KIND from `repo-intel/constants.js`).
+// A job KIND is a domain-ring literal; nothing else from `modules/reviews/` is
+// imported here, and NO table owned by that module is queried from this file:
+// `pr_intent` is reached ONLY through the `container.reviewRepo` facade.
+import { INTENT_JOB_KIND } from '../reviews/constants.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -207,6 +215,68 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           });
         previewByPr.set(prId, preview);
       }
+
+      // ---- Intent auto-fill (L03) ----------------------------------------
+      // Smart Diff's context header and the reviewer's intent injection are
+      // both worthless on a PR nobody ever clicked the recompute button on, so
+      // fill MISSING intents in the background from this read. Only missing
+      // ones: a STALE intent is still never silently recomputed (that stays a
+      // manual, human-clicked action).
+      //
+      // 🔴 DOUBLE-SPEND. Every enqueued job is a billable model call, and this
+      // handler is polled (TanStack Query refetches on window focus). "Enqueue
+      // when there is no `pr_intent` row" is check-then-act: no row exists until
+      // the job LANDS, so a plain missing-row guard re-enqueues the same PR on
+      // every read in between — tab away, tab back, pay again. `upsertIntent`'s
+      // ON CONFLICT makes the WRITE safe; it does nothing for the SPEND.
+      // So we skip a PR that either
+      //   (a) already HAS an intent  — asked through the `container.reviewRepo`
+      //       facade: `pr_intent` is owned by `modules/reviews`, and a table has
+      //       exactly one owning module (one IN-query on the PK's B-tree), or
+      //   (b) already has an IN-FLIGHT (queued|running) intent job — asked of the
+      //       JobRunner, which owns the platform-level `jobs` table.
+      // Residual window: two SIMULTANEOUS requests can still both pass the check
+      // before either has inserted its `jobs` row. Closing that fully needs a DB
+      // uniqueness constraint (partial unique index on the in-flight payload),
+      // which is a schema change and out of scope here. What this does kill is
+      // the UNBOUNDED re-enqueue-on-every-poll loop, which was the real bill.
+      const [prIdsWithIntent, inFlight] = await Promise.all([
+        container.reviewRepo.prIdsWithIntent(prIds),
+        container.jobs.pendingPayloads(workspaceId, INTENT_JOB_KIND),
+      ]);
+      const skipIntent = new Set(prIdsWithIntent);
+      for (const payload of inFlight) {
+        // `jobs.payload` is free-form jsonb → parse, never cast.
+        const parsed = IntentJobPayload.safeParse(payload);
+        if (parsed.success) skipIntent.add(parsed.data.prId);
+      }
+      // Capped per request, mirroring BACKFILL_LIMIT above: this spends money
+      // without a human in the loop, so the cap is load-bearing.
+      const missingIntent = prIds
+        .filter((id) => !skipIntent.has(id))
+        .slice(0, INTENT_ENQUEUE_LIMIT);
+      let intentJobsEnqueued = 0;
+      for (const prId of missingIntent) {
+        try {
+          await container.jobs.enqueue(workspaceId, INTENT_JOB_KIND, { prId });
+          intentJobsEnqueued += 1;
+        } catch (err) {
+          // `jobs.enqueue` THROWS when no handler is registered for the kind
+          // (platform/jobs.ts). A PR-list READ must never 500 because a
+          // background intent job could not be queued — log and carry on; the
+          // intent shows up on a later visit. Same shape as repos/service.ts.
+          app.log.warn({ err, prId }, 'Intent auto-fill enqueue skipped');
+        }
+      }
+      if (intentJobsEnqueued > 0) {
+        // The cost receipt persisted per intent (`pr_intent.cost_usd`) is only
+        // reconcilable against a count of what we actually PAID to start, so the
+        // number enqueued — not the number considered — is what gets logged.
+        app.log.info(
+          { repoId: repo.id, enqueued: intentJobsEnqueued, candidates: missingIntent.length },
+          'Intent auto-fill: enqueued background intent job(s)',
+        );
+      }
     }
 
     const now = Date.now();
@@ -262,30 +332,59 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const gh = await container.github();
       const detail = await gh.getPullRequest({ owner: repo.owner, name: repo.name }, pr.number);
 
-      await container.db.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
-      if (detail.files.length > 0) {
-        await container.db.insert(t.prFiles).values(
-          detail.files.map((f) => ({
-            prId: pr.id,
-            path: f.path,
-            additions: f.additions,
-            deletions: f.deletions,
-            patch: f.patch ?? null,
-          })),
-        );
-      }
-      await container.db.delete(t.prCommits).where(eq(t.prCommits.prId, pr.id));
-      if (detail.commits.length > 0) {
-        await container.db.insert(t.prCommits).values(
-          detail.commits.map((c) => ({
-            prId: pr.id,
-            sha: c.sha,
-            message: c.message,
-            author: c.author,
-            committedAt: c.committed_at ? new Date(c.committed_at) : null,
-          })),
-        );
-      }
+      // The files/commits mirror is a DELETE-then-INSERT, which is NOT safe to run
+      // concurrently: two overlapping detail fetches for the same PR interleave as
+      // (A delete, B delete, A insert, B insert) and leave EVERY path duplicated —
+      // which then crashes the diff viewers, whose React keys are `f.path`.
+      // React StrictMode's double-effect plus TanStack's refetchOnWindowFocus make
+      // that trivially reachable, and the duplicate rows PERSIST once written.
+      //
+      // A transaction alone does not fix it: under READ COMMITTED, B's DELETE takes
+      // its snapshot before A commits, so it can miss the rows A just inserted and
+      // duplicate them regardless. The transaction-scoped ADVISORY LOCK is what
+      // actually serializes the two refreshes — the second waits for the first to
+      // commit, then deletes rows it can see. Keyed on the PR id, so refreshes of
+      // different PRs still run in parallel. (Chosen over a UNIQUE (pr_id, path)
+      // index because `pr_files` is a pre-existing shared table — see root
+      // CLAUDE.md: extend with new tables/columns, never migrate the shared ones.)
+      // ONE ENTRY PER PATH — deduped ONCE, here, and used for BOTH the DB mirror and
+      // the HTTP response. They must not diverge: the response is what the diff
+      // viewers render, and their React key is `f.path`, so a repeated path is a hard
+      // crash in the UI. Deduping only the rows we INSERT is not enough — the success
+      // path below returns `{ ...detail }`, i.e. GitHub's payload, which never touches
+      // the database at all. That gap is exactly how a duplicate `CLAUDE.md` reached
+      // the client from a freshly-migrated DB. Last one wins.
+      const files = [...new Map(detail.files.map((f) => [f.path, f])).values()];
+      const commits = [...new Map(detail.commits.map((c) => [c.sha, c])).values()];
+
+      await container.db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${pr.id}, 0))`);
+
+        await tx.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
+        if (files.length > 0) {
+          await tx.insert(t.prFiles).values(
+            files.map((f) => ({
+              prId: pr.id,
+              path: f.path,
+              additions: f.additions,
+              deletions: f.deletions,
+              patch: f.patch ?? null,
+            })),
+          );
+        }
+        await tx.delete(t.prCommits).where(eq(t.prCommits.prId, pr.id));
+        if (commits.length > 0) {
+          await tx.insert(t.prCommits).values(
+            commits.map((c) => ({
+              prId: pr.id,
+              sha: c.sha,
+              message: c.message,
+              author: c.author,
+              committedAt: c.committed_at ? new Date(c.committed_at) : null,
+            })),
+          );
+        }
+      });
       await container.db
         .update(t.pullRequests)
         .set({
@@ -298,11 +397,23 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         })
         .where(eq(t.pullRequests.id, pr.id));
 
-      return { ...detail, id: pr.id };
+      // NOT `{ ...detail }` — that is the raw GitHub payload and would leak a repeated
+      // path to the viewers. Serve exactly what we persisted.
+      return { ...detail, files, commits, id: pr.id };
     } catch (err) {
       app.log.warn({ err }, 'GitHub PR detail refresh skipped (no token / offline); serving persisted detail');
-      const files = await container.db.select().from(t.prFiles).where(eq(t.prFiles.prId, pr.id));
-      const commits = await container.db.select().from(t.prCommits).where(eq(t.prCommits.prId, pr.id));
+      // Dedupe on READ as well as on write. The write path is now serialized, but
+      // rows duplicated by the older racy mirror are already persisted in existing
+      // databases — and this offline branch never rewrites them, so without this a
+      // token-less install would serve duplicate paths forever and keep crashing the
+      // diff viewers (their React keys are `f.path`). Cheap, and it self-heals.
+      const fileRows = await container.db.select().from(t.prFiles).where(eq(t.prFiles.prId, pr.id));
+      const commitRows = await container.db
+        .select()
+        .from(t.prCommits)
+        .where(eq(t.prCommits.prId, pr.id));
+      const files = [...new Map(fileRows.map((f) => [f.path, f])).values()];
+      const commits = [...new Map(commitRows.map((c) => [c.sha, c])).values()];
       return {
         id: pr.id,
         number: pr.number,
@@ -333,6 +444,51 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       };
     }
   });
+
+  // ---- Smart Diff (L03) ---------------------------------------------------
+  // Regroups the SAME diff by role (core → wiring → boilerplate) and badges the
+  // lines the latest review flagged.
+  //
+  // 🔴 ZERO MODEL CALLS. This handler does NOT touch `container.llm()` — that is
+  // the load-bearing invariant of the whole feature. It composes data we already
+  // have: `pr_files` (written by GET /pulls/:id) + the latest review's findings,
+  // both read through the `container.reviewRepo` facade, then hands them to a
+  // PURE builder. `pseudocode_summary` is derived from the patch by
+  // `deriveSummary`, not by a model.
+  //
+  // It also does NOT read `pr_intent`: the `SmartDiff` contract has nowhere to
+  // put it (`groups` + `split_suggestion`, nothing else), and the serializer
+  // would silently strip an extra key. The client composes the intent context
+  // header from the existing `GET /pulls/:id/intent`.
+  app.get(
+    '/pulls/:id/smart-diff',
+    { schema: { params: IdParams, response: { 200: SmartDiffResponse } } },
+    async (req): Promise<SmartDiff> => {
+      const { workspaceId } = await getContext(container, req);
+      // Workspace-scoped: a PR id from another workspace must 404, not leak a
+      // diff. `getPrFiles` takes a bare prId, so this check is what enforces it.
+      const pr = await container.reviewRepo.getPull(workspaceId, req.params.id);
+      if (!pr) throw new NotFoundError('Pull request not found');
+
+      const files = await container.reviewRepo.getPrFiles(pr.id);
+
+      // `reviewsForPull` returns rows newest-first but filters NEITHER `kind`
+      // NOR dismissed findings — so do both here:
+      //   · summaries are not reviews → filter kind === 'review', take the first
+      //     (= the LATEST review, because the rows are already newest-first);
+      //   · a dismissed finding must not badge a line (the Findings tab hides
+      //     it, so the badge would reveal nothing).
+      // No review yet ⇒ no findings ⇒ every `finding_lines: []`, and the
+      // grouped layout still renders. Degrade, never 500.
+      const reviews = await container.reviewRepo.reviewsForPull(pr.id);
+      const latest = reviews.find((r) => r.review.kind === 'review');
+      const findings = (latest?.findings ?? [])
+        .filter((f) => f.dismissedAt == null)
+        .map((f) => ({ file: f.file, startLine: f.startLine }));
+
+      return buildSmartDiff(files, findings);
+    },
+  );
 
   // ---- Inline review comments (Files changed tab) -------------------------
   // Proxied live to GitHub (no local persistence): GET reflects existing PR

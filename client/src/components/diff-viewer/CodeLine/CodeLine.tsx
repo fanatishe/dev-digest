@@ -1,11 +1,22 @@
 /* CodeLine — one rendered diff line: gutter number, +/- sign, text, plus the
-   hover "+" affordance, any anchored comment threads, and an inline composer. */
+   hover "+" affordance, any anchored comment threads, an inline composer, and —
+   when the latest review flagged this line — a clickable severity badge that
+   deep-links to the finding on the Findings tab.
+
+   `findings`/`onOpenFinding` are OPTIONAL, so the flat DiffViewer path is
+   unchanged. Finding titles are LLM-authored from attacker-controlled source
+   code: they are rendered as plain text through JSX (which escapes) and are only
+   ever an accessible name / tooltip — never HTML, never an href. */
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
+import { Icon } from "@devdigest/ui";
 import { commentTargetFor, type CommentThread, type DiffCommentApi, cs } from "../comments";
+import { type DiffFinding } from "../findings";
 import { type Line } from "../helpers";
-import { s, lineRowFor, lineSignFor } from "../styles";
+import { sevToken } from "@/lib/severity";
+import { s, findingBadgeFor, lineRowFor, lineSignFor } from "../styles";
 import { CommentThreadView } from "../CommentThreadView";
 import { InlineComposer } from "../InlineComposer";
 
@@ -14,12 +25,18 @@ export function CodeLine({
   path,
   threads,
   commenting,
+  findings,
+  onOpenFinding,
 }: {
   ln: Line;
   path: string;
   threads: CommentThread[];
   commenting?: DiffCommentApi;
+  /** Review findings anchored to THIS line (RIGHT side) — badged in the row. */
+  findings?: DiffFinding[];
+  onOpenFinding?: (id: string) => void;
 }) {
+  const t = useTranslations("shell");
   const [hover, setHover] = React.useState(false);
   const [composing, setComposing] = React.useState(false);
 
@@ -62,6 +79,19 @@ export function CodeLine({
         <span className="mono" style={s.lineText}>
           {ln.text || " "}
         </span>
+        {(findings ?? []).map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => onOpenFinding?.(f.id)}
+            title={f.title}
+            aria-label={t("diffViewer.openFinding", { title: f.title })}
+            style={findingBadgeFor(sevToken(f.severity))}
+          >
+            <Icon.AlertTriangle size={10} aria-hidden />
+            {f.severity}
+          </button>
+        ))}
       </div>
 
       {commenting &&

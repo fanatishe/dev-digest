@@ -24,12 +24,18 @@ const PRICING: Record<string, Price> = {
   'claude-3-5-sonnet-latest': { in: 3.0, out: 15.0 },
   'claude-3-5-haiku-latest': { in: 0.8, out: 4.0 },
   'claude-3-opus-latest': { in: 15.0, out: 75.0 },
-  // OpenRouter (CI runner, cheap models). Slugs + prices are APPROXIMATE and
-  // must be confirmed against openrouter.ai/models before relying on cost.
-  // Unknown slugs fall through to null cost (explicitly flagged), which is safe.
-  'z-ai/glm-4.7-flash': { in: 0, out: 0 }, // free baseline for evals
-  'deepseek/deepseek-v4-flash': { in: 0.14, out: 0.28 },
-  'z-ai/glm-4.7-flashx': { in: 0.15, out: 0.4 },
+  // OpenRouter (CI runner, cheap models).
+  // RECONCILED 2026-07-12 against the live OpenRouter catalog (`/api/v1/models`):
+  //   - deepseek-v4-flash was listed at $0.14/$0.28 — it is $0.077/$0.154. It is
+  //     now the default model for the `review_intent` feature, whose whole selling
+  //     point is cost, so a fictional price here would falsify the receipt.
+  //   - glm-4.7-flash was listed as free ({in:0,out:0}) — it is NOT free.
+  //   - glm-4.7-flashx no longer exists in the catalog; the row was removed (an
+  //     unknown slug falls through to null cost, which is the honest answer).
+  // The rest are unverified approximations. Re-check before trusting them; an
+  // unknown slug returns null cost (explicitly flagged), which is safe.
+  'z-ai/glm-4.7-flash': { in: 0.06, out: 0.4 },
+  'deepseek/deepseek-v4-flash': { in: 0.077, out: 0.154 },
   'minimax/minimax-m2.5': { in: 0.3, out: 1.2 },
   'z-ai/glm-5.1': { in: 0.6, out: 2.2 },
 };

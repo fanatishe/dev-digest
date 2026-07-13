@@ -19,12 +19,23 @@ export function DiffViewer({
   commenting?: DiffCommentApi;
 }) {
   const t = useTranslations("shell");
-  if (!files || files.length === 0) {
+
+  // `path` is the React key, so a repeated path is not a cosmetic warning — React
+  // duplicates/omits children and the page breaks. The API guarantees one entry per
+  // path, but this is the LAST line of defence before a render: a bad row should
+  // degrade to "we showed the file once", never to a broken diff. Last one wins,
+  // matching the server's dedupe.
+  const unique = React.useMemo(
+    () => [...new Map((files ?? []).map((f) => [f.path, f])).values()],
+    [files],
+  );
+
+  if (unique.length === 0) {
     return <div style={s.empty}>{t("diffViewer.noChangedFiles")}</div>;
   }
   return (
     <div style={s.list}>
-      {files.map((f) => (
+      {unique.map((f) => (
         <FileCard key={f.path} file={f} commenting={commenting} />
       ))}
     </div>

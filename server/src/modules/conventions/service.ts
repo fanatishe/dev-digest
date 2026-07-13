@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import type { ConventionCandidate, ConventionSkillDraft, Provider } from '@devdigest/shared';
+import type {
+  ConventionCandidate,
+  ConventionScanStage,
+  ConventionSkillDraft,
+  Provider,
+} from '@devdigest/shared';
 import type { Container } from '../../platform/container.js';
 import { resolveFeatureModel } from '../settings/feature-models.js';
 import { ConventionsRepository } from './repository.js';
@@ -71,6 +76,14 @@ const SYSTEM_PROMPT = [
   'many weak ones. Set confidence in [0,1] by how consistently the sample supports it.',
 ].join('\n');
 
+/** One pipeline-stage transition, relayed by the route to the server log AND the SSE bus. */
+export interface ScanProgressEvent {
+  stage: ConventionScanStage;
+  status: 'start' | 'done';
+  /** Human-readable line, shown verbatim in the client's scan log. */
+  msg: string;
+}
+
 export class ConventionsService {
   private repo: ConventionsRepository;
 
@@ -105,43 +118,74 @@ export class ConventionsService {
   /**
    * Run the full extraction pipeline for a repo and return the verified,
    * persisted candidates. Undefined when the repo isn't in the workspace.
-   * `onLog` surfaces progress lines for the caller to relay (e.g. server log).
+   *
+   * `onProgress` reports each stage as it STARTS and as it FINISHES. The start events
+   * are what make the UI honest: `analyze` (the model call) dominates the wall clock, so
+   * without a "starting" event the client would sit silent for most of the scan.
    */
   async extract(
     workspaceId: string,
     repoId: string,
-    onLog?: (msg: string) => void,
+    onProgress?: (e: ScanProgressEvent) => void,
   ): Promise<ConventionCandidate[] | undefined> {
     const ref = await this.repo.repoRef(workspaceId, repoId);
     if (!ref) return undefined;
 
+    const start = (stage: ConventionScanStage, msg: string) =>
+      onProgress?.({ stage, status: 'start', msg });
+    const done = (stage: ConventionScanStage, msg: string) =>
+      onProgress?.({ stage, status: 'done', msg });
+
     // 1. Sample selection — pure, no model.
+    start('sample', `Sampling files from ${ref.fullName}…`);
     const samples = await this.collectSamples(repoId);
-    onLog?.(`Conventions: sampled ${samples.length} file(s) from ${ref.fullName}`);
+    done('sample', `Sampled ${samples.length} file(s) from ${ref.fullName}`);
     if (samples.length === 0) {
       await this.repo.replaceForRepo(workspaceId, repoId, []);
       return [];
     }
 
-    // 2. Model analysis — cheap structured call.
-    const raw = await this.analyze(workspaceId, samples);
-    onLog?.(`Conventions: model returned ${raw.length} candidate(s)`);
+    // 2. Model analysis — the slow stage. Resolve the model up front so the "starting"
+    //    event can name it (the user is about to wait on this one).
+    const { provider, model } = await resolveFeatureModel(this.container, workspaceId, 'conventions');
+    start('analyze', `Analyzing ${samples.length} file(s) with ${model}…`);
+    const raw = await this.analyze(provider as Provider, model, samples);
+    done('analyze', `Model returned ${raw.length} candidate(s)`);
 
     // 3. Evidence verification — discard anything not grounded in a sampled file/line.
+    start('verify', 'Verifying evidence against the sampled files…');
     const byPath = new Map(samples.map((s) => [s.path, s.content]));
     const verified = raw.flatMap((c) => {
       const grounded = verifyEvidence(c, byPath);
       return grounded ? [grounded] : [];
     });
-    onLog?.(`Conventions: ${verified.length} candidate(s) survived evidence verification`);
+    done('verify', `${verified.length} of ${raw.length} candidate(s) survived evidence verification`);
 
-    // 4. Persist survivors (full replacement of the repo's prior set).
+    // 4. Persist survivors (full replacement of the repo's prior set), stamped with the
+    //    clone HEAD we just read them at so the client can deep-link the evidence to the
+    //    exact commit (line numbers can't drift). Null sha → the card renders no link.
+    start('persist', 'Saving conventions…');
+    const evidenceSha = await this.currentHead(ref);
     const rows = await this.repo.replaceForRepo(
       workspaceId,
       repoId,
-      verified.map((v) => ({ workspaceId, repoId, ...v })),
+      verified.map((v) => ({ workspaceId, repoId, evidenceSha, ...v })),
     );
+    done('persist', `Saved ${rows.length} convention(s)`);
     return rows.map(toCandidate);
+  }
+
+  /**
+   * The clone's HEAD sha. Best-effort: a clone that isn't a git repo (or was never
+   * cloned) must not fail an otherwise-good extraction — we lose the deep-link, not
+   * the conventions. Mirrors `safeCurrentHead` in repo-intel's full pipeline.
+   */
+  private async currentHead(ref: { owner: string; name: string }): Promise<string | null> {
+    try {
+      return (await this.container.git.currentHead({ owner: ref.owner, name: ref.name })) || null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -186,11 +230,11 @@ export class ConventionsService {
 
   /** One structured model call over the sampled files → raw candidates. */
   private async analyze(
-    workspaceId: string,
+    provider: Provider,
+    model: string,
     samples: Sample[],
   ): Promise<ExtractionResult['candidates']> {
-    const { provider, model } = await resolveFeatureModel(this.container, workspaceId, 'conventions');
-    const llm = await this.container.llm(provider as Provider);
+    const llm = await this.container.llm(provider);
     const res = await llm.completeStructured<ExtractionResult>({
       model,
       schema: ExtractionResult,

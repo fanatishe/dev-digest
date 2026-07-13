@@ -71,6 +71,14 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
+  /**
+   * Pre-rendered PR intent block (what the PR set out to do), derived upstream
+   * and passed in as a plain string — the engine stays pure and never computes
+   * or fetches one. Untrusted (LLM-authored from author text): delimiter-wrapped
+   * in the prompt, with the scope rule kept in the trusted system string.
+   * Empty/undefined → section omitted, prompt unchanged.
+   */
+  intent?: string;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -136,6 +144,10 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     repoMap: input.repoMap,
     prDescription: input.prDescription,
     task: input.task,
+    // Spread idiom (not `intent: input.intent`) so the key is absent — not
+    // present-and-undefined — when there is no intent; keeps
+    // exactOptionalPropertyTypes callers happy.
+    ...(input.intent ? { intent: input.intent } : {}),
   };
 
   // Whole-diff assembly is the trace default; overwritten below for single-pass.

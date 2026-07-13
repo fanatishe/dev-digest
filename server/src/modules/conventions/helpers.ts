@@ -45,6 +45,7 @@ export function toCandidate(row: ConventionRow): ConventionCandidate {
     rule: row.rule,
     evidence_path: row.evidencePath ?? '',
     evidence_snippet: row.evidenceSnippet ?? '',
+    evidence_sha: row.evidenceSha ?? null,
     confidence: clamp01(row.confidence ?? 0),
     accepted: row.accepted,
   };

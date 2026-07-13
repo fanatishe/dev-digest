@@ -46,10 +46,65 @@ for the rubric.
   when `value===""` instead. Drop-in for `<Textarea>` (same value/onChange/rows). (2026-07-11)
 
 ## What Doesn't Work
-<!-- Dead ends and antipatterns. The most valuable section — don't skip it. -->
+
+- **Duplicating a constant to dodge a forbidden import buys time, not safety — and the
+  copies diverge faster than you think.** `components/diff-viewer/` is the SHARED ring, so
+  it may not import `SEV_COLOR` from a route's `_components/` (the one edge
+  `frontend-ui-architecture` forbids outright). Copying the 4-entry severity map looked like
+  the only legal move. By the end of the SAME session there were three copies and they had
+  drifted **two** ways: only the new one guarded the prototype-chain lookup, and the
+  `RunTraceDrawer` copy mapped `SUGGESTION → var(--accent)` instead of `var(--sugg)` — i.e.
+  the trace drawer had been rendering suggestion badges the wrong colour, undetected.
+  When the shared ring needs a route's constant the answer is **promote to `lib/`**, never
+  copy: `components/` → `lib/` is downward and legal. Now `lib/severity.ts` is the single
+  home, and all three consumers import `sevToken()` from it. (2026-07-13, Smart Diff)
 
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
+
+- **A wire-supplied string used as an object KEY needs an own-property guard — `?? FALLBACK`
+  cannot save you.** `SEV_COLOR[f.severity] ?? FALLBACK` looks total, but `f.severity` comes
+  off the wire: `"constructor"` / `"toString"` resolve UP THE PROTOTYPE CHAIN and return a
+  *function*, which is truthy, so `??` never fires — and that function is then handed to
+  React as a `CSSProperties` value. Fix: declare the map `as const satisfies
+  Record<string,string>` and export ONLY a guarded accessor
+  (`Object.prototype.hasOwnProperty.call(MAP, key)`). Under `strict`, `as const` makes any
+  arbitrary-string index a **compile error**, so the guard is enforced by the typechecker
+  rather than by reviewer vigilance. See `lib/severity.ts`. The pattern recurs anywhere a
+  contract enum indexes a token map. (2026-07-13)
+
+- **`Chip` vs `Badge` has a THIRD case: a badge that IS a control.** A clickable severity
+  badge (Smart Diff's "jump to this finding") can be neither — `Chip` is a filter chip and
+  `Badge` is a `<span>`. It is a bare `<button>` styled from `styles.ts`, with the
+  accessible name in `aria-label`: colour + icon alone is invisible to a screen reader AND
+  unqueryable by `getByRole`. (2026-07-13)
+
+- **A multi-key URL update MUST be one `router.replace`, not two `setParam` calls.**
+  `PrDetailView`'s `setParam(key, val)` rebuilds the query string from the CURRENT `search`
+  snapshot, so `setParam("tab",…); setParam("finding",…)` makes the second call read a STALE
+  `search` and CLOBBER the first — the finding deep-link silently loses its `tab`. Added
+  `setParams(patch)` (one `mergeParams` + one `replace`) and reimplemented `setParam` in
+  terms of it, so the clobber is now structurally impossible. Test it by asserting
+  `replace` was called **exactly once** with both keys — a call-count of 1 is what fails on
+  a two-call implementation. (2026-07-13)
+
+- **`Chip` (`vendor/ui`) renders a `<button>` — it is for INTERACTIVE filter chips only.**
+  For a static chip-looking label (e.g. the Intent card's risk areas) use `Badge` (a
+  `<span>`) with `bg="transparent"` + `style={{ border: "1px solid var(--border)" }}`. Same
+  look, no phantom buttons polluting `getAllByRole("button")` and screen-reader output.
+  (2026-07-12, Intent Layer)
+
+- **`SectionLabel`'s `right` slot is the house place for a card's header actions.** An
+  icon-only action there should be `<Button icon="…" loading={mutation.isPending}
+  aria-label={…} />`, NOT `IconBtn` — `IconBtn` has no `loading` state, and `Button`
+  spreads `ButtonHTMLAttributes`, so the `aria-label` that an icon-only control requires
+  actually type-checks. (2026-07-12)
+
+- **ICU quoting bites in `messages/en/*.json`:** an apostrophe is next-intl's escape
+  character, so write `"is not available"` rather than `"isn't available"` unless you
+  double it. Also pass PRE-FORMATTED numbers (`toLocaleString("en-US")`) into a message
+  instead of raw numbers, so a rendered string like `12,431 → 890 tokens (93% saved)` is
+  deterministic in tests. (2026-07-12)
 
 - **Native HTML5 drag-reorder should reorder by ID, not by list index.** The agent
   editor's Skills tab (`AgentEditor/_components/SkillsTab`) lets you filter the list
@@ -119,6 +174,13 @@ for the rubric.
   passes it into `apiFetch`; queryFns are `({ signal }) => api.get(path, signal)` so
   navigating away / refetching cancels the in-flight request. Mutations don't take a
   signal. (2026-07-10)
+  - **CORRECTION (2026-07-12): this is no longer true — do not follow it.** The
+    `AbortSignal` param was reverted (see the 2026-07-11 audit note further down);
+    `src/lib/api.ts` is now `get: <T>(path: string) => apiFetch<T>(path)` — **no signal
+    param**. Write query fns as `queryFn: () => api.get(path)`. Left above rather than
+    deleted because two sessions in a row have been misled by it: a reverted change
+    whose INSIGHTS entry survives is more dangerous than no entry at all, because it is
+    read as high-confidence guidance.
 
 - **Per-route tab titles need a SERVER page — a `"use client"` page can't export
   `metadata`/`generateMetadata`.** Root `layout.tsx` sets
@@ -177,6 +239,40 @@ for the rubric.
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-13 (Smart Diff L03)
+Built `SmartDiffViewer` (grouped core/wiring/boilerplate, boilerplate collapsed, intent
+context header) on the PR page's Files-changed tab, with a Smart/Original order toggle whose
+"Original" branch renders today's flat `DiffViewer` untouched. **The big lesson: the feature
+was almost entirely WIRING, not new mechanism.** The whole badge→finding deep-link already
+existed as the documented "reveal a child by nonce" chain (`?finding=` → `FindingsTab` nonce
+→ `ReviewRunAccordion` opens the owning run → `FindingsPanel` force-includes it under a
+filter → `FindingCard` expands + scrolls); it was simply only ever driven by the PR-list
+popover. Making a diff-line badge drive it too was an onClick + a multi-key `setParams`.
+Before building a "missing" feature here, check whether the chain already exists and just
+lacks a second caller — this is the second session in a row where that was true (cf.
+2026-07-12 conventions inline edit). Extended the SHARED `diff-viewer` at two surgical seams
+only (`FileCard.defaultOpen`, `CodeLine` per-line findings), reusing the inline-comment
+feature's exact `Map<"RIGHT:123", …>` per-line lookup shape rather than inventing a second
+one. No diff library added; `parsePatch` still ours.
+
+### 2026-07-12 (Conventions: inline rule edit + evidence deep-link)
+Closed two gaps on `ConventionCandidateCard` that were **pure UI wiring over a backend that
+already worked**: `PATCH /conventions/:id` accepted `{rule}` and `useAcceptConvention` already
+sent it — no UI ever called it with a rule, so inline edit needed ZERO hook/server change.
+Worth internalising: before building a "missing" feature here, check whether the hook and
+route already support it. Details. (1) The rule editor copies `InlineComposer`'s shape
+(Textarea + Save/Cancel, Esc cancels, Cmd/Ctrl+Enter saves) — the house precedent for
+edit-in-place; there is still no generic `EditableText` primitive. (2) `evidence_path` is a
+PACKED string (`"file:23-25"`), not structured fields, so linking it needs a parser — added
+`parseEvidencePath` next to the existing `githubBlobUrl` in `lib/github-urls.ts` (splits on
+the LAST colon; a non-numeric suffix falls back to a bare path). Reuse `githubBlobUrl`; don't
+write a second URL builder. (3) `MonoLink` already emits `<a target="_blank"
+rel="noopener noreferrer">` when given `href` — it IS the GitHub-link primitive; render plain
+text (not an href-less MonoLink, which becomes a pointless `<button>`) when there's nothing
+to link to. Link only when repo full_name AND `evidence_sha` are both present. (4) Re-scan is
+a destructive full replace server-side, so it silently ate hand-edited rules — gated it behind
+the existing `useConfirm()`. Typecheck + 83 tests green (+19).
 
 ### 2026-07-11 (Conventions tab + Skill Dynamics)
 Built the Conventions tab (Skills Lab). Mostly wiring — `messages/en/conventions.json`,

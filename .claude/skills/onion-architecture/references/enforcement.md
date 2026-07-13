@@ -35,9 +35,7 @@ A conforming tree prints `no dependency violations found`.
   `Container` ↔ `repo-intel` composition-root cycle, `agents` helpers↔repository)
   are advisory.
 
-Add a shortcut to
-`server/package.json` (remember it is `git skip-worktree`, so commit it via CI
-config or a tracked wrapper rather than expecting `git status` to show it):
+Add a shortcut to `server/package.json`:
 
 ```jsonc
 "scripts": {

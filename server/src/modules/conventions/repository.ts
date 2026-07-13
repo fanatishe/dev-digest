@@ -18,6 +18,8 @@ export interface InsertConvention {
   rule: string;
   evidencePath: string;
   evidenceSnippet: string;
+  /** Clone HEAD the evidence was read at; null when the sha couldn't be resolved. */
+  evidenceSha: string | null;
   confidence: number;
 }
 
@@ -25,15 +27,16 @@ export class ConventionsRepository {
   constructor(private db: Db) {}
 
   /**
-   * A repo's name/fullName, scoped to the workspace. Used to (a) validate the repo
-   * belongs to the tenant (undefined → 404) and (b) name the aggregated skill.
+   * A repo's owner/name/fullName, scoped to the workspace. Used to (a) validate the
+   * repo belongs to the tenant (undefined → 404), (b) name the aggregated skill, and
+   * (c) build the `RepoRef` the git port needs to resolve the clone's HEAD.
    */
   async repoRef(
     workspaceId: string,
     repoId: string,
-  ): Promise<{ name: string; fullName: string } | undefined> {
+  ): Promise<{ owner: string; name: string; fullName: string } | undefined> {
     const [row] = await this.db
-      .select({ name: t.repos.name, fullName: t.repos.fullName })
+      .select({ owner: t.repos.owner, name: t.repos.name, fullName: t.repos.fullName })
       .from(t.repos)
       .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, repoId)));
     return row;
@@ -80,6 +83,7 @@ export class ConventionsRepository {
             rule: r.rule,
             evidencePath: r.evidencePath,
             evidenceSnippet: r.evidenceSnippet,
+            evidenceSha: r.evidenceSha,
             confidence: r.confidence,
             accepted: false,
           })),

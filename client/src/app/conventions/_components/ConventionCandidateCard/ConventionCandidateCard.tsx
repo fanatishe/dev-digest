@@ -1,24 +1,32 @@
 /* ConventionCandidateCard — one extracted house-rule: the rule text, its cited
    file:line evidence snippet, a confidence bar, and Accept / Reject actions.
    Accept toggles the persisted `accepted` flag; Reject removes the candidate.
-   Mirrors FindingCard's accept/dismiss button pattern. */
+   The rule is editable in place (click the text → textarea + Save/Cancel), and the
+   evidence path deep-links to github.com at the commit the snippet was read from.
+   Mirrors FindingCard's accept/dismiss buttons and its MonoLink file reference. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Button, IconBtn } from "@devdigest/ui";
+import { Button, IconBtn, MonoLink, Textarea } from "@devdigest/ui";
 import type { ConventionCandidate } from "@devdigest/shared";
+import { githubBlobUrl, parseEvidencePath } from "@/lib/github-urls";
 import { s, confidenceColor } from "./styles";
 
 export function ConventionCandidateCard({
   candidate,
+  repoFullName,
   pending,
   onAccept,
+  onEditRule,
   onReject,
 }: {
   candidate: ConventionCandidate;
+  /** "owner/repo" — with the candidate's sha, turns the evidence into a GitHub link. */
+  repoFullName?: string | null;
   pending?: boolean;
   onAccept: (next: boolean) => void;
+  onEditRule?: (rule: string) => void;
   onReject: () => void;
 }) {
   const t = useTranslations("conventions");
@@ -26,6 +34,8 @@ export function ConventionCandidateCard({
   const color = confidenceColor(pct);
   const accepted = candidate.accepted;
   const [copied, setCopied] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(candidate.rule);
 
   const copyEvidence = async () => {
     try {
@@ -37,16 +47,87 @@ export function ConventionCandidateCard({
     }
   };
 
+  // Only linkable when we know BOTH the repo and the commit the evidence was read at —
+  // a link pinned to the wrong commit would point at the wrong lines. Candidates scanned
+  // before `evidence_sha` was recorded simply render as plain text, as they do today.
+  const { file, start, end } = parseEvidencePath(candidate.evidence_path);
+  const evidenceHref =
+    repoFullName && candidate.evidence_sha
+      ? githubBlobUrl(repoFullName, candidate.evidence_sha, file, start, end)
+      : undefined;
+
+  const startEdit = () => {
+    setDraft(candidate.rule);
+    setEditing(true);
+  };
+  const cancelEdit = () => {
+    setDraft(candidate.rule);
+    setEditing(false);
+  };
+  const save = () => {
+    const next = draft.trim();
+    if (!next || next === candidate.rule) return cancelEdit();
+    onEditRule?.(next);
+    setEditing(false);
+  };
+
   return (
     <div style={s.card(accepted)}>
       <div style={s.main}>
-        <div style={s.rule}>{candidate.rule}</div>
+        {editing ? (
+          <div
+            style={s.editWrap}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") cancelEdit();
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") save();
+            }}
+          >
+            <Textarea value={draft} onChange={setDraft} rows={3} />
+            <div style={s.editActions}>
+              <Button
+                kind="primary"
+                size="sm"
+                icon="Check"
+                disabled={pending || !draft.trim()}
+                onClick={save}
+              >
+                {t("card.save")}
+              </Button>
+              <Button kind="ghost" size="sm" onClick={cancelEdit} disabled={pending}>
+                {t("card.cancel")}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div style={s.ruleRow}>
+            <div
+              role="button"
+              tabIndex={0}
+              title={t("card.edit")}
+              style={s.rule}
+              onClick={startEdit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  startEdit();
+                }
+              }}
+            >
+              {candidate.rule}
+            </div>
+            <IconBtn icon="Edit" label={t("card.edit")} onClick={startEdit} />
+          </div>
+        )}
 
         <div style={s.evidence}>
           <div style={s.evidenceBar}>
-            <span className="mono" style={s.evidencePath}>
-              {candidate.evidence_path}
-            </span>
+            {evidenceHref ? (
+              <MonoLink href={evidenceHref}>{candidate.evidence_path}</MonoLink>
+            ) : (
+              <span className="mono" style={s.evidencePath}>
+                {candidate.evidence_path}
+              </span>
+            )}
             <div style={{ flex: 1 }} />
             <IconBtn
               icon={copied ? "Check" : "Copy"}

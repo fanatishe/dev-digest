@@ -37,6 +37,8 @@ export const conventions = pgTable('conventions', {
   rule: text('rule').notNull(),
   evidencePath: text('evidence_path'),
   evidenceSnippet: text('evidence_snippet'),
+  /** Clone HEAD at scan time — pins the evidence deep-link to the commit we read. */
+  evidenceSha: text('evidence_sha'),
   confidence: doublePrecision('confidence'),
   accepted: boolean('accepted').notNull().default(false),
 });

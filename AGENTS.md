@@ -22,8 +22,6 @@ and unused contracts are scaffolding for later lessons (L01–L08), not dead cod
   `@devdigest/shared`), consuming TS **source** directly — no build/publish step.
 - **`@devdigest/shared`** (Zod contracts) is the one schema every package agrees on.
   It lives at `server/src/vendor/shared` and is copy-vendored into the client.
-- **`server/package.json` is git `skip-worktree`** — a local variant diverges. Don't
-  expect `git status` to show your edits; CI invokes vitest with explicit globs.
 - **Secrets never touch git or the DB** — they live in `~/.devdigest/secrets.json`
   (mode 0600) via `LocalSecretsProvider`, `process.env` as fallback.
 - **The DB schema pre-declares EVERY table** (`server/src/db/schema.ts`). Unused ones

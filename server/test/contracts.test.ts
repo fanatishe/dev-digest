@@ -66,9 +66,29 @@ describe('AI contracts parse fixtures', () => {
   });
 
   it('Intent / BlastRadius / Risks / PrHistory', () => {
+    // The Intent Layer added `risk_areas` + `derived_from` as NULLISH fields, so a
+    // pre-existing fixture must still parse …
     expect(() =>
       Intent.parse({ intent: 'x', in_scope: ['a'], out_of_scope: ['b'] }),
     ).not.toThrow();
+    // … and the new fields must actually round-trip when present.
+    const withProvenance = Intent.parse({
+      intent: 'Rate-limit the public router.',
+      in_scope: ['public router middleware'],
+      out_of_scope: ['internal router'],
+      risk_areas: ['Public API surface', 'Auth surface touched'],
+      derived_from: ['pr_body', 'issue #123', 'docs/plans/rate-limit.md'],
+    });
+    expect(withProvenance.risk_areas).toEqual(['Public API surface', 'Auth surface touched']);
+    expect(withProvenance.derived_from).toContain('issue #123');
+    // Nullish, not optional: an explicit null (a row with no provenance) is legal.
+    expect(
+      Intent.parse({ intent: 'x', in_scope: [], out_of_scope: [], risk_areas: null, derived_from: null })
+        .risk_areas,
+    ).toBeNull();
+    expect(() =>
+      Intent.parse({ intent: 'x', in_scope: [], out_of_scope: [], risk_areas: 'not-an-array' }),
+    ).toThrow();
     expect(() =>
       BlastRadius.parse({
         changed_symbols: [{ name: 'rateLimit', file: 'a.ts', kind: 'function' }],

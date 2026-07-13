@@ -96,8 +96,7 @@ pnpm exec depcruise --config ../.claude/skills/onion-architecture/assets/onion.d
 errors** in four thin CRUD modules (`workspace`, `settings`, `pulls`, `polling`)
 that query Drizzle straight from `routes.ts` — genuine onion deviations that form
 the adopt-and-fix backlog. To wire a shortcut, add `"arch:check"` to
-`server/package.json` scripts (note: that file is `skip-worktree`, so add it
-locally / in CI rather than expecting `git status` to track it). See
+`server/package.json` scripts. See
 [`references/enforcement.md`](references/enforcement.md) for the baseline, how to
 read a violation, add a new allowed ring, and wire CI.
 

@@ -67,6 +67,15 @@ export interface StructuredRequest<T> {
    * the `session_id` body field; ignored by providers that don't support it.
    */
   sessionId?: string;
+  /**
+   * OpenRouter reasoning control. Reasoning-capable flash models (e.g.
+   * `deepseek/deepseek-v4-flash`) will otherwise spend reasoning tokens on
+   * trivial extractions — which is billed as output and quietly undoes the
+   * cost saving that made a flash model the right choice. Set
+   * `{ enabled: false }` for mechanical structured extraction.
+   * Sent as the `reasoning` body field; ignored by providers that don't support it.
+   */
+  reasoning?: { enabled: boolean };
 }
 
 export interface StructuredResult<T> {

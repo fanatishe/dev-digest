@@ -14,12 +14,27 @@
     "deselectAll": "Deselect all",
     "acceptedCount": "{accepted} of {total} accepted",
     "createSkill": "Create skill",
+    "editFailed": "Could not save the rule.",
+    "rescanConfirm": {
+      "title": "Re-scan and discard current conventions?",
+      "message": "Re-scanning replaces all {count, plural, one {# candidate} other {# candidates}} for this repo. Accepted rules and any edits you've made will be lost.",
+      "confirm": "Re-scan"
+    },
     "empty": {
       "title": "No conventions extracted yet",
       "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
       "cta": "Run extraction"
     },
     "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
+  },
+  "scan": {
+    "title": "Scanning {repo}…",
+    "stage": {
+      "sample": "Sample files from the clone",
+      "analyze": "Analyze with the model",
+      "verify": "Verify evidence",
+      "persist": "Save conventions"
+    }
   },
   "card": {
     "confidence": "Confidence",
@@ -28,7 +43,10 @@
     "accepting": "Accepting…",
     "reject": "Reject",
     "acceptAsSkill": "Accept as Skill",
-    "copy": "Copy evidence"
+    "copy": "Copy evidence",
+    "edit": "Edit rule",
+    "save": "Save",
+    "cancel": "Cancel"
   },
   "modal": {
     "title": "Create skill from conventions",

@@ -8,6 +8,7 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import { renderIntentBlock, isStale } from './intent-helpers.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -105,6 +106,32 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // The derived PR intent, if one has been computed. A review NEVER computes
+    // one silently — that would hide an LLM call inside every first review and
+    // review against an intent the user never saw. No intent → the prompt is
+    // byte-identical to a pre-Intent-Layer review. Best-effort: a failure to
+    // read it costs the scope block, not the review.
+    let intentBlock: string | undefined;
+    try {
+      const row = await this.repo.getIntentRow(pull.id);
+      if (row) {
+        intentBlock = renderIntentBlock({
+          intent: row.intent,
+          in_scope: row.inScope,
+          out_of_scope: row.outOfScope,
+          risk_areas: row.riskAreas,
+          derived_from: row.derivedFrom,
+        });
+        if (isStale(row.headSha, pull.headSha)) {
+          runLog.info('Intent: stale (head moved since it was derived) — injecting anyway');
+        } else {
+          runLog.info('Intent: injected into the review prompt');
+        }
+      }
+    } catch (err) {
+      runLog.info(`Intent: unavailable (${(err as Error).message}) — reviewing without a scope block`);
+    }
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -112,7 +139,7 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog, intentBlock);
         logger?.info(
           {
             runId,
@@ -144,6 +171,8 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    /** The derived intent block, pre-rendered by executeRuns; absent → no scope section. */
+    intentBlock?: string,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -218,6 +247,10 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // The derived intent/scope. Present only when someone computed it via
+        // the button; assemblePrompt fences it and adds the scope rule to the
+        // TRUSTED system string (never inside the untrusted block).
+        ...(intentBlock ? { intent: intentBlock } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),

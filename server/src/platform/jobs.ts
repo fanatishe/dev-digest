@@ -1,5 +1,5 @@
 import PQueue from 'p-queue';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import * as t from '../db/schema.js';
 import { withTimeout, withRetry } from './resilience.js';
@@ -98,6 +98,38 @@ export class JobRunner {
     }) as Promise<void>;
 
     return { id: jobId, done };
+  }
+
+  /**
+   * Payloads of the jobs of `kind` that are still IN FLIGHT in a workspace —
+   * i.e. rows whose `status` is `queued` or `running` (the `jobs` status enum is
+   * `queued | running | done | failed`; there is no `pending`).
+   *
+   * This exists so an enqueue site can DEDUPE before it spends money. `enqueue`
+   * is not idempotent, and a "skip if the RESULT row is missing" guard is
+   * check-then-act: between enqueue and completion no result row exists, so every
+   * subsequent read re-enqueues the same work. Checking the queue itself closes
+   * that loop.
+   *
+   * The read lives HERE because the `jobs` table is PLATFORM-owned — this class is
+   * its only writer, and no module owns it — so a module route asks the JobRunner
+   * rather than reaching into `t.jobs` with raw Drizzle from the HTTP ring.
+   *
+   * The payload is free-form `jsonb`: callers get `unknown` and must parse it
+   * (Zod) rather than cast. Bounded by workspace + kind + in-flight status.
+   */
+  async pendingPayloads(workspaceId: string, kind: string): Promise<unknown[]> {
+    const rows = await this.db
+      .select({ payload: t.jobs.payload })
+      .from(t.jobs)
+      .where(
+        and(
+          eq(t.jobs.workspaceId, workspaceId),
+          eq(t.jobs.kind, kind),
+          inArray(t.jobs.status, ['queued', 'running']),
+        ),
+      );
+    return rows.map((r) => r.payload);
   }
 
   /** Wait for the queue to drain (useful in tests). */

@@ -35,6 +35,7 @@
   "diffViewer": {
     "noDiffText": "No diff text available (binary or unfetched patch).",
     "noChangedFiles": "No changed files.",
+    "findingCount": "{count, plural, one {# finding} other {# findings}}",
     "commentPlaceholder": "Leave a comment… (⌘/Ctrl+Enter to post)",
     "post": "Comment",
     "posting": "Posting…",
@@ -42,6 +43,7 @@
     "reply": "Reply",
     "viewOnGitHub": "View on GitHub",
     "postedToGitHub": "Posts to GitHub immediately",
-    "outdatedTitle": "{count} comment(s) on older revisions"
+    "outdatedTitle": "{count} comment(s) on older revisions",
+    "openFinding": "Open finding: {title}"
   }
 }

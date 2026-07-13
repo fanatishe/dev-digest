@@ -1,11 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
 import { RunRequest } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
 import { ReviewService } from './service.js';
+import { IntentService } from './intent-service.js';
 
 /**
  * reviews module.
@@ -13,13 +15,32 @@ import { ReviewService } from './service.js';
  *   GET    /runs/:id/events                            → SSE stream of RunEvent (replay-first)
  *   GET    /runs/:id/trace                             → the single-document RunTrace
  *   GET    /pulls/:id/reviews                          → persisted reviews + findings for a PR
+ *   GET    /pulls/:id/intent                           → the derived intent (or null), with is_stale
+ *   POST   /pulls/:id/intent  {scan_id?}               → recompute the intent (progress on the RunBus)
  *   POST   /findings/:id/(accept|dismiss)              → finding actions
  */
 const FINDING_ACTIONS = ['accept', 'dismiss'] as const;
+
+/**
+ * `scan_id` is optional: the client mints it up front and subscribes to
+ * `/runs/:scan_id/events` for live progress. The bus buffers and replays, so a
+ * subscriber that connects a moment after this POST still sees every stage —
+ * the handshake isn't racy. Omit it and the recompute runs silently, as before.
+ */
+const IntentBody = z.object({ scan_id: z.string().uuid().optional() }).optional();
+
 export default async function reviewsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
   const service = new ReviewService(container);
+  const intentService = new IntentService(container);
+
+  // Register the INTENT_JOB_KIND handler exactly once, at plugin load — the same
+  // shape as `repo-intel/routes.ts` → `registerIndexJobHandlers()`. `pulls/routes.ts`
+  // enqueues this kind when the PR list finds a PR with no intent, and
+  // `JobRunner.enqueue` THROWS if no handler is registered, so this line is what
+  // makes the auto-fill work at all. No new route: the job IS the trigger.
+  intentService.registerIntentJobHandler(app.log);
 
   // ---- Run a review (manual trigger) -------------------------------
   // Tight per-route limit: each call can fan out to expensive LLM runs.
@@ -130,6 +151,56 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(container, req);
     return service.reviewsForPull(workspaceId, req.params.id);
   });
+
+  // ---- Intent Layer -------------------------------------------------------
+  // What the PR was TRYING to do, from metadata + hunk HEADERS only.
+  app.get('/pulls/:id/intent', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    const intent = await intentService.get(workspaceId, req.params.id);
+    if (intent === undefined) throw new NotFoundError('Pull request not found');
+    return intent; // null when it has never been computed
+  });
+
+  // One cheap LLM call — same tight per-route limit as a review run.
+  app.post(
+    '/pulls/:id/intent',
+    {
+      schema: { params: IdParams, body: IntentBody },
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      const scanId = req.body?.scan_id;
+      const bus = container.runBus;
+
+      try {
+        const intent = await intentService.compute(
+          workspaceId,
+          req.params.id,
+          (e) => {
+            if (!scanId) return;
+            bus.publish(scanId, e.status === 'done' ? 'result' : 'info', e.msg, {
+              stage: e.stage,
+              status: e.status,
+            });
+          },
+          req.log,
+        );
+        if (intent === undefined) throw new NotFoundError('Pull request not found');
+        return intent;
+      } catch (err) {
+        // Surface the failure ON the stream too, or the client's stage list just
+        // stops mid-scan with no explanation when the model call blows up.
+        if (scanId) {
+          bus.publish(scanId, 'error', err instanceof Error ? err.message : 'Intent failed');
+        }
+        throw err;
+      } finally {
+        // Always end the stream, success or failure, or the EventSource hangs open.
+        if (scanId) bus.complete(scanId);
+      }
+    },
+  );
 
   // ---- Delete a whole review run (one agent's pass) + its findings --------
   app.delete('/reviews/:id', { schema: { params: IdParams } }, async (req) => {

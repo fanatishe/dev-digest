@@ -64,8 +64,7 @@ edit an existing file under `server/src/db/migrations/`.
 **4 — Banned commands.** `docker compose down -v` (deletes the volume and every imported
 repo and review), `git commit`, `git push`, `git checkout`, `git switch`, `git reset`,
 `git stash`. Never write a secret into git or the DB — secrets live in
-`~/.devdigest/secrets.json`. Note `server/package.json` is git `skip-worktree`, so edits to
-it will not show in `git status`.
+`~/.devdigest/secrets.json`.
 
 **5 — Do NOT append to `INSIGHTS.md`.** Your siblings are running concurrently and would
 race you on the same file. Return **insight candidates** in your report; the orchestrating

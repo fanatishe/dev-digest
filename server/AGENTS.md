@@ -32,7 +32,6 @@ repo-wide rules. Map, not docs — keep ≤100 lines; link, don't copy.
 
 - **Don't edit the shared tables' migrations** — the schema is complete by design;
   add new tables/columns via new migrations only (see root CLAUDE.md).
-- **`package.json` is `skip-worktree`** — your edits won't show in `git status`.
 - Rate limit is global 120/min (off under `NODE_ENV=test`); SSE + `/health*` exempt.
 - Secrets are **not** part of `AppConfig` — they flow through `SecretsProvider`.
 

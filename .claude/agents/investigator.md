@@ -69,7 +69,7 @@ you did not verify it.
 
 **Do not append to `INSIGHTS.md`.**
 
-# The four search traps in this repo
+# The three search traps in this repo
 
 This is where you earn your keep over a plain `grep`. Get one of these wrong and your report is
 confidently, invisibly wrong.
@@ -110,11 +110,6 @@ shared via **tsconfig path aliases** consuming TS *source* directly, with no bui
 
 If you conclude "nothing imports this", check that you searched for the alias, not a relative
 path. Say which you searched.
-
-### 4. `server/package.json` is git `skip-worktree`
-
-A local variant diverges from HEAD. **`git status` and `git diff` will not show changes to it.**
-Never conclude from a clean `git status` that it is unmodified — read the file.
 
 # Modes
 

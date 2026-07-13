@@ -70,13 +70,12 @@ e2e/specs/*.flow.json
 server/test/helpers/**          ← ADD a new helper only; see below
 ```
 
-**Banned, explicitly** — some of these `git status` cannot catch for you:
+**Banned, explicitly**:
 
 | Banned | Why |
 |---|---|
 | any `*/src/**` file that is not `*.test.ts(x)` | **this is the rule.** Product source is `implementer`'s |
-| **`server/package.json`** | it is git `skip-worktree` — **an edit to it never appears in `git status`**, so it is banned *by name*, not by the self-check |
-| any other `package.json`, `vitest.config.*`, `tsconfig*.json` | test *infrastructure* is not a test |
+| any `package.json`, `vitest.config.*`, `tsconfig*.json` | test *infrastructure* is not a test. If your test needs a new script or a config change — report `BLOCKED` and name it |
 | `server/test/helpers/pg.ts`, `server/test/helpers/runs.ts` | every integration suite imports them; a sibling agent depends on the shape you would change. **Adding a new helper file is fine.** If your test cannot be written without changing an existing helper — report `BLOCKED` |
 | `server/src/db/migrations/**` | never |
 | `AGENTS.md` · `CLAUDE.md` · `INSIGHTS.md` · `.claude/**` | not yours |

@@ -115,7 +115,6 @@ are `*.test.tsx` (jsdom + RTL, `fetch` mocked). See `TESTING.md`.
 
 **Other landmines.** No auth (`LocalNoAuthProvider`, one seeded user/workspace). Secrets
 live in `~/.devdigest/secrets.json` (mode 0600) — never git, never the DB.
-`server/package.json` is git `skip-worktree`, so edits to it do not show in `git status`.
 Ignore `server/clones/**` — runtime data, and it holds a stale copy of this repo that will
 pollute greps.
 

@@ -29,6 +29,15 @@ export const s = {
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
   fileStat: { fontSize: 12 } satisfies CSSProperties,
+  /** "N findings" on the file header — visible even when the card is collapsed. */
+  findingCount: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    fontSize: 12,
+    fontWeight: 600,
+    color: "var(--crit)",
+  } satisfies CSSProperties,
   addText: { color: "var(--code-add-text)" } satisfies CSSProperties,
   delText: { color: "var(--code-del-text)" } satisfies CSSProperties,
   fileBody: {
@@ -65,6 +74,29 @@ export const s = {
     paddingRight: 12,
   } satisfies CSSProperties,
 } as const;
+
+/** The clickable severity badge sitting at the end of a flagged code line. */
+export function findingBadgeFor(color: string): CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 0,
+    margin: "0 10px",
+    padding: "0 6px",
+    height: 16,
+    alignSelf: "center",
+    borderRadius: 4,
+    border: `1px solid ${color}`,
+    background: "transparent",
+    color,
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    lineHeight: "14px",
+    cursor: "pointer",
+  };
+}
 
 /** Chevron rotates 90deg when the file card is open. */
 export function chevronFor(open: boolean): CSSProperties {

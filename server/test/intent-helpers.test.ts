@@ -11,6 +11,7 @@ import {
   renderIntentInput,
   type IntentSources,
 } from '../src/modules/reviews/intent-helpers.js';
+import { formatIntentReceipt } from '../src/modules/reviews/intent-service.js';
 import { parseUnifiedDiff } from '../src/adapters/git/diff-parser.js';
 import { TiktokenTokenizer } from '../src/adapters/tokenizer/index.js';
 import type { Intent } from '@devdigest/shared';
@@ -331,5 +332,25 @@ describe('isStale — we do not cry wolf', () => {
     expect(isStale('aaa111', null)).toBe(false);
     expect(isStale(undefined, undefined)).toBe(false);
     expect(isStale('', 'bbb222')).toBe(false);
+  });
+});
+
+describe('formatIntentReceipt — automatic spend leaves an auditable line', () => {
+  it('renders the provider-reported bill for the call', () => {
+    expect(
+      formatIntentReceipt(
+        { tokensIn: 1204, tokensOut: 96, costUsd: 0.00021 },
+        'deepseek/deepseek-v4-flash',
+      ),
+    ).toBe('Intent: 1,204 in / 96 out — $0.00021 (deepseek/deepseek-v4-flash)');
+  });
+
+  it('says "cost not reported" rather than inventing $0.00000', () => {
+    // A provider that reported no usage is UNMEASURED, not free — and
+    // `adapters/llm/pricing.ts` has drifted and silently lied before, so it is not
+    // trustworthy enough to guess a number with. Say so instead.
+    expect(formatIntentReceipt({ tokensIn: 10, tokensOut: 2, costUsd: null }, 'm')).toBe(
+      'Intent: 10 in / 2 out — cost not reported (m)',
+    );
   });
 });

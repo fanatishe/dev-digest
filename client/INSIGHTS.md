@@ -46,10 +46,47 @@ for the rubric.
   when `value===""` instead. Drop-in for `<Textarea>` (same value/onChange/rows). (2026-07-11)
 
 ## What Doesn't Work
-<!-- Dead ends and antipatterns. The most valuable section — don't skip it. -->
+
+- **Duplicating a constant to dodge a forbidden import buys time, not safety — and the
+  copies diverge faster than you think.** `components/diff-viewer/` is the SHARED ring, so
+  it may not import `SEV_COLOR` from a route's `_components/` (the one edge
+  `frontend-ui-architecture` forbids outright). Copying the 4-entry severity map looked like
+  the only legal move. By the end of the SAME session there were three copies and they had
+  drifted **two** ways: only the new one guarded the prototype-chain lookup, and the
+  `RunTraceDrawer` copy mapped `SUGGESTION → var(--accent)` instead of `var(--sugg)` — i.e.
+  the trace drawer had been rendering suggestion badges the wrong colour, undetected.
+  When the shared ring needs a route's constant the answer is **promote to `lib/`**, never
+  copy: `components/` → `lib/` is downward and legal. Now `lib/severity.ts` is the single
+  home, and all three consumers import `sevToken()` from it. (2026-07-13, Smart Diff)
 
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
+
+- **A wire-supplied string used as an object KEY needs an own-property guard — `?? FALLBACK`
+  cannot save you.** `SEV_COLOR[f.severity] ?? FALLBACK` looks total, but `f.severity` comes
+  off the wire: `"constructor"` / `"toString"` resolve UP THE PROTOTYPE CHAIN and return a
+  *function*, which is truthy, so `??` never fires — and that function is then handed to
+  React as a `CSSProperties` value. Fix: declare the map `as const satisfies
+  Record<string,string>` and export ONLY a guarded accessor
+  (`Object.prototype.hasOwnProperty.call(MAP, key)`). Under `strict`, `as const` makes any
+  arbitrary-string index a **compile error**, so the guard is enforced by the typechecker
+  rather than by reviewer vigilance. See `lib/severity.ts`. The pattern recurs anywhere a
+  contract enum indexes a token map. (2026-07-13)
+
+- **`Chip` vs `Badge` has a THIRD case: a badge that IS a control.** A clickable severity
+  badge (Smart Diff's "jump to this finding") can be neither — `Chip` is a filter chip and
+  `Badge` is a `<span>`. It is a bare `<button>` styled from `styles.ts`, with the
+  accessible name in `aria-label`: colour + icon alone is invisible to a screen reader AND
+  unqueryable by `getByRole`. (2026-07-13)
+
+- **A multi-key URL update MUST be one `router.replace`, not two `setParam` calls.**
+  `PrDetailView`'s `setParam(key, val)` rebuilds the query string from the CURRENT `search`
+  snapshot, so `setParam("tab",…); setParam("finding",…)` makes the second call read a STALE
+  `search` and CLOBBER the first — the finding deep-link silently loses its `tab`. Added
+  `setParams(patch)` (one `mergeParams` + one `replace`) and reimplemented `setParam` in
+  terms of it, so the clobber is now structurally impossible. Test it by asserting
+  `replace` was called **exactly once** with both keys — a call-count of 1 is what fails on
+  a two-call implementation. (2026-07-13)
 
 - **`Chip` (`vendor/ui`) renders a `<button>` — it is for INTERACTIVE filter chips only.**
   For a static chip-looking label (e.g. the Intent card's risk areas) use `Badge` (a
@@ -202,6 +239,22 @@ for the rubric.
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-13 (Smart Diff L03)
+Built `SmartDiffViewer` (grouped core/wiring/boilerplate, boilerplate collapsed, intent
+context header) on the PR page's Files-changed tab, with a Smart/Original order toggle whose
+"Original" branch renders today's flat `DiffViewer` untouched. **The big lesson: the feature
+was almost entirely WIRING, not new mechanism.** The whole badge→finding deep-link already
+existed as the documented "reveal a child by nonce" chain (`?finding=` → `FindingsTab` nonce
+→ `ReviewRunAccordion` opens the owning run → `FindingsPanel` force-includes it under a
+filter → `FindingCard` expands + scrolls); it was simply only ever driven by the PR-list
+popover. Making a diff-line badge drive it too was an onClick + a multi-key `setParams`.
+Before building a "missing" feature here, check whether the chain already exists and just
+lacks a second caller — this is the second session in a row where that was true (cf.
+2026-07-12 conventions inline edit). Extended the SHARED `diff-viewer` at two surgical seams
+only (`FileCard.defaultOpen`, `CodeLine` per-line findings), reusing the inline-comment
+feature's exact `Map<"RIGHT:123", …>` per-line lookup shape rather than inventing a second
+one. No diff library added; `parsePatch` still ours.
 
 ### 2026-07-12 (Conventions: inline rule edit + evidence deep-link)
 Closed two gaps on `ConventionCandidateCard` that were **pure UI wiring over a backend that

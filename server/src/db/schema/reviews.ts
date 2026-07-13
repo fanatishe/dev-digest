@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  doublePrecision,
+  real,
+} from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
@@ -74,6 +83,15 @@ export const prIntent = pgTable('pr_intent', {
   model: text('model'),
   tokensFull: integer('tokens_full'),
   tokensHeaders: integer('tokens_headers'),
+  /**
+   * The receipt for the call itself, mirroring `agent_runs`' columns/types.
+   * Distinct from `tokensFull`/`tokensHeaders`, which are OUR tokenizer's count
+   * of two renderings of the diff — these are what the PROVIDER actually billed.
+   * Nullable: intents written before the row was auto-computed have no receipt.
+   */
+  tokensIn: integer('tokens_in'),
+  tokensOut: integer('tokens_out'),
+  costUsd: real('cost_usd'),
   /** Not the shared `now()` helper: that one is named `created_at`, and this row
       is UPSERTed on every recompute — it records the latest scan, not a birth. */
   computedAt: timestamp('computed_at', { withTimezone: true }).defaultNow().notNull(),

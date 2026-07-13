@@ -1,27 +1,57 @@
+/* DiffTab — the Files-changed tab. Owns the hooks (comments · smart diff · intent)
+   and the Smart/Original order toggle; the two viewers below it are presentational.
+
+   Smart order is the default: files regrouped core → wiring → boilerplate, the
+   boilerplate group collapsed, the intent context header on top, and a severity
+   badge on every flagged line. Original order renders today's flat DiffViewer
+   unchanged — it is also the fallback while the smart-diff query is loading or if
+   it errors, so this tab is never worse than it was. */
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { SectionLabel, Button } from "@devdigest/ui";
-import { DiffViewer, type DiffCommentApi } from "@/components/diff-viewer";
+import { DiffViewer, type DiffCommentApi, type DiffFinding } from "@/components/diff-viewer";
 import { usePrComments, useCreatePrComment } from "@/lib/hooks/reviews";
+import { useSmartDiff } from "@/lib/hooks/smart-diff";
+import { useIntent } from "@/lib/hooks/intent";
 import { notify } from "@/lib/toast";
 import type { PrFile } from "@devdigest/shared";
+import { SmartDiffViewer } from "../SmartDiffViewer";
 
 interface DiffTabProps {
   prId: string | null;
   filesCount: number;
   files: PrFile[];
+  /** Findings of the latest review — the badge anchors. Empty when never reviewed. */
+  findings: DiffFinding[];
+  /** Deep-link a badge to its finding on the Findings tab (one replace, no reload). */
+  onOpenFinding: (id: string) => void;
   /** Inline commenting is offered only on open PRs (GitHub rejects otherwise). */
   canComment?: boolean;
 }
 
-export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
+export function DiffTab({
+  prId,
+  filesCount,
+  files,
+  findings,
+  onOpenFinding,
+  canComment,
+}: DiffTabProps) {
+  const t = useTranslations("prReview");
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
+  const { data: smart } = useSmartDiff(prId);
+  const { data: intent } = useIntent(prId);
   // Comments start hidden so the diff is clean by default — toggle to reveal.
   const [showComments, setShowComments] = React.useState(false);
+  const [order, setOrder] = React.useState<"smart" | "original">("smart");
 
   const commentCount = comments?.length ?? 0;
+  // Derived, not stored: no smart diff (still loading, or the query errored) just
+  // means the flat viewer — which is always correct.
+  const showSmart = order === "smart" && !!smart;
 
   const commenting: DiffCommentApi = {
     comments: comments ?? [],
@@ -34,7 +64,7 @@ export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
         setShowComments(true); // a just-posted comment shouldn't stay hidden
         return res;
       } catch (err) {
-        notify.error(err instanceof Error ? err.message : "Couldn't post the comment to GitHub.");
+        notify.error(err instanceof Error ? err.message : t("smartDiff.commentFailed"));
         throw err;
       }
     },
@@ -45,21 +75,49 @@ export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
       <SectionLabel
         icon="Code"
         right={
-          commentCount > 0 ? (
-            <Button
-              kind="ghost"
-              size="sm"
-              icon={showComments ? "EyeOff" : "Eye"}
-              onClick={() => setShowComments((v) => !v)}
-            >
-              {showComments ? "Hide comments" : "Show comments"} ({commentCount})
-            </Button>
-          ) : undefined
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Labelled by the ACTION, like the comments toggle beside it: while
+                Smart order is showing, the button offers Original order. */}
+            {smart && (
+              <Button
+                kind="ghost"
+                size="sm"
+                icon={order === "smart" ? "FileText" : "Layers"}
+                onClick={() => setOrder((o) => (o === "smart" ? "original" : "smart"))}
+              >
+                {order === "smart" ? t("smartDiff.originalOrder") : t("smartDiff.smartOrder")}
+              </Button>
+            )}
+            {commentCount > 0 && (
+              <Button
+                kind="ghost"
+                size="sm"
+                icon={showComments ? "EyeOff" : "Eye"}
+                onClick={() => setShowComments((v) => !v)}
+              >
+                {showComments
+                  ? t("smartDiff.hideComments", { count: commentCount })
+                  : t("smartDiff.showComments", { count: commentCount })}
+              </Button>
+            )}
+          </div>
         }
       >
-        Files changed · {filesCount} files
+        {t("smartDiff.filesChanged", { count: filesCount })}
       </SectionLabel>
-      <DiffViewer files={files} commenting={commenting} />
+
+      {showSmart && smart ? (
+        <SmartDiffViewer
+          smart={smart}
+          files={files}
+          findings={findings}
+          intent={intent ?? null}
+          commenting={commenting}
+          onOpenFinding={onOpenFinding}
+        />
+      ) : (
+        <DiffViewer files={files} commenting={commenting} />
+      )}
     </section>
   );
 }

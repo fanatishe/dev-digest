@@ -11,7 +11,7 @@ import { ErrorState, type Severity } from "@devdigest/ui";
 import { AppShell } from "@/components/app-shell";
 import { RepoNotFound } from "@/components/repo-not-found";
 import { PrDetailSkeleton } from "./_components/PrDetailSkeleton";
-import { parseSeverity } from "./helpers";
+import { mergeParams, parseSeverity } from "./helpers";
 import { PrDetailHeader } from "../PrDetailHeader";
 import { OverviewTab } from "../OverviewTab";
 import { FindingsTab } from "../FindingsTab";
@@ -64,12 +64,18 @@ export function PrDetailView({ repoId, number }: { repoId: string; number: strin
   const severity: Severity | null = parseSeverity(search.get("severity"));
   // Deep-link to a specific finding (from the PR-list popover) → reveal it below.
   const finding = search.get("finding");
-  const setParam = (key: string, val: string | null) => {
-    const sp = new URLSearchParams(search.toString());
-    if (val == null) sp.delete(key);
-    else sp.set(key, val);
-    router.replace(`/repos/${repoId}/pulls/${number}${sp.toString() ? `?${sp.toString()}` : ""}`);
+  /**
+   * Write several query params in ONE navigation. Two sequential single-key
+   * writes would both read the same (stale) `search` snapshot and the second
+   * would clobber the first — which is exactly what the diff's finding badge
+   * needs to avoid: it sets `tab=findings` AND `finding=<id>` together.
+   * `router.replace` (not push) ⇒ no page reload; the existing FindingsTab
+   * reveal chain picks `?finding=` up and expands/scrolls the card.
+   */
+  const setParams = (patch: Record<string, string | null>) => {
+    router.replace(`/repos/${repoId}/pulls/${number}${mergeParams(search.toString(), patch)}`);
   };
+  const setParam = (key: string, val: string | null) => setParams({ [key]: val });
   const setTab = (t: string) => setParam("tab", t);
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
@@ -80,6 +86,18 @@ export function PrDetailView({ repoId, number }: { repoId: string; number: strin
   );
   const lethalTrifecta = allFindings.filter((f) => f.kind === "lethal_trifecta");
   const findingsCount = allFindings.length;
+  // The diff badges anchor on the LATEST review's findings only (runs are
+  // newest-first, and `kind: 'summary'` rows carry none) — stacking every past
+  // run's findings onto the gutter would badge lines that a re-review cleared.
+  // Dismissed ones are excluded (mirroring the server's `finding_lines`): the
+  // Findings tab hides them, so a badge for one would reveal nothing.
+  const latestFindings: FindingRecord[] = React.useMemo(
+    () =>
+      ((reviews ?? []).find((r) => r.kind === "review")?.findings ?? []).filter(
+        (f) => f.dismissed_at == null,
+      ),
+    [reviews],
+  );
 
   const repoName = activeRepo?.full_name ?? repoId;
   // The real "owner/repo" (null until the repo is loaded) — used to build
@@ -176,6 +194,11 @@ export function PrDetailView({ repoId, number }: { repoId: string; number: strin
             prId={prId}
             filesCount={pr.files_count}
             files={pr.files}
+            findings={latestFindings}
+            // ONE replace, BOTH keys — the existing FindingsTab reveal chain
+            // (?finding= → nonce → accordion → FindingCard.expand+scroll) does
+            // the rest. No reload, no new mechanism.
+            onOpenFinding={(id) => setParams({ tab: "findings", finding: id })}
             canComment={pr.status === "open"}
           />
         )}

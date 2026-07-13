@@ -66,7 +66,18 @@
     "largeBody": "Consider splitting it into smaller, focused PRs for easier review:",
     "filesCount": "{count} files",
     "findingLines": "{count} finding-lines",
-    "groupedByRole": "Smart Diff · grouped by role"
+    "groupedByRole": "Smart Diff · grouped by role",
+    "smartOrder": "Smart order",
+    "originalOrder": "Original order",
+    "coreDesc": "Business logic — read these first.",
+    "wiringDesc": "Configs, entrypoints and glue.",
+    "boilerplateDesc": "Lock files, generated code, tests and snapshots.",
+    "intentHeader": "What this PR is trying to do",
+    "stale": "Stale",
+    "filesChanged": "Files changed · {count} files",
+    "showComments": "Show comments ({count})",
+    "hideComments": "Hide comments ({count})",
+    "commentFailed": "The comment could not be posted to GitHub."
   },
   "list": {
     "breadcrumb": "Pull Requests",

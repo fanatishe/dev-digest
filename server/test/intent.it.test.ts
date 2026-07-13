@@ -205,6 +205,35 @@ d('Intent Layer routes (Testcontainers pg)', () => {
     await app.close();
   });
 
+  it('the BUTTON stays unconditional: POST recomputes even when an intent already exists', async () => {
+    // The auto-fill job skips a PR that already has an intent (`computeIfMissing`).
+    // The button must NOT inherit that guard — being unconditional is the entire
+    // point of a "recompute" button, and it is the only way to refresh a stale intent.
+    const llm = new MockLLMProvider('openai', {
+      structuredBySchema: { IntentExtraction: INTENT_FIXTURE },
+    });
+    const app = await buildApp({
+      config: config(),
+      db: pg.handle.db,
+      overrides: {
+        git: new MockGitClient({ diff: DIFF }),
+        github: new MockGitHubClient(),
+        llm: { openrouter: llm },
+      },
+    });
+    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId, 'aaa111');
+    const modelCalls = () => llm.calls.filter((c) => c.method === 'completeStructured').length;
+
+    expect((await app.inject({ method: 'POST', url: `/pulls/${pr.id}/intent`, payload: {} })).statusCode).toBe(200);
+    expect(modelCalls()).toBe(1);
+
+    // Same PR, same head, intent already stored — the button still pays for a call.
+    expect((await app.inject({ method: 'POST', url: `/pulls/${pr.id}/intent`, payload: {} })).statusCode).toBe(200);
+    expect(modelCalls()).toBe(2);
+
+    await app.close();
+  });
+
   it('recomputing UPSERTs the same row and restamps it with the new head', async () => {
     const app = await appWithMockLlm();
     const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId, 'aaa111');

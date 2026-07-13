@@ -31,6 +31,12 @@ export class ReviewRepository {
     return pullRepo.getPull(this.db, workspaceId, prId);
   }
 
+  // NOTE: `pullRepo.getPullById` (workspace-FREE) is deliberately NOT exposed here.
+  // This facade hangs off `container.reviewRepo` and is reachable from every route,
+  // so an unscoped read on it would sit next to a request-supplied id in any HTTP
+  // handler. The intent job imports that module function directly from
+  // `./repository/pull.repo.js` — same module, no boundary crossed.
+
   getRepo(repoId: string): Promise<typeof t.repos.$inferSelect | undefined> {
     return pullRepo.getRepo(this.db, repoId);
   }
@@ -143,6 +149,12 @@ export class ReviewRepository {
 
   getIntent(prId: string): Promise<Intent | undefined> {
     return pullRepo.getIntent(this.db, prId);
+  }
+
+  /** Which of `prIds` already have an intent row. `pr_intent` belongs to THIS
+   *  module; `modules/pulls` reads it through this facade, never directly. */
+  prIdsWithIntent(prIds: string[]): Promise<string[]> {
+    return pullRepo.prIdsWithIntent(this.db, prIds);
   }
 
   /** The stored row incl. provenance — `PrIntentRecord`/`is_stale` are built from it. */

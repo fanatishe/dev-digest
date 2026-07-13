@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { Intent } from '@devdigest/shared';
@@ -15,6 +15,27 @@ export async function getPull(
     .select()
     .from(t.pullRequests)
     .where(and(eq(t.pullRequests.workspaceId, workspaceId), eq(t.pullRequests.id, prId)));
+  return row;
+}
+
+/**
+ * The PR row by id ALONE — no workspace filter, because there is nobody to scope
+ * against yet. Its only caller is the intent job handler, whose payload carries a
+ * `prId` minted by our own PR-list handler and nothing else. The row itself is the
+ * source of the workspace: the handler reads `workspaceId` off it and then re-reads
+ * the PR through the workspace-scoped `getPull`, so no caller can ever widen its
+ * own scope by handing us an id.
+ *
+ * 🔴 This is deliberately NOT on `ReviewRepository`, and must not be put back there.
+ * `container.reviewRepo` is reachable from EVERY route, so a workspace-free read on
+ * that facade sits three lines away from a `req.params.id` in any handler that ever
+ * holds it — and a comment is not a constraint. `IntentService` lives inside
+ * `modules/reviews`, so it imports this module function directly (no boundary is
+ * crossed) and the unscoped read stays unreachable from the HTTP ring. An HTTP
+ * handler needing a PR must use `getPull(workspaceId, prId)`.
+ */
+export async function getPullById(db: Db, prId: string): Promise<PullRow | undefined> {
+  const [row] = await db.select().from(t.pullRequests).where(eq(t.pullRequests.id, prId));
   return row;
 }
 
@@ -71,6 +92,18 @@ export interface IntentProvenance {
   model: string | null;
   tokensFull: number | null;
   tokensHeaders: number | null;
+  /**
+   * What the PROVIDER actually billed for the classify call — distinct from
+   * `tokensFull`/`tokensHeaders`, which are OUR tokenizer's count of two
+   * renderings of the diff. Intent is now computed automatically by a background
+   * job, so spend nobody clicked for must still leave a receipt.
+   *
+   * Nullable end to end: `costUsd` is null whenever the provider reported no
+   * usage, and rows written before these columns existed have no receipt at all.
+   */
+  tokensIn: number | null;
+  tokensOut: number | null;
+  costUsd: number | null;
 }
 
 export async function upsertIntent(
@@ -92,6 +125,9 @@ export async function upsertIntent(
     model: provenance.model,
     tokensFull: provenance.tokensFull,
     tokensHeaders: provenance.tokensHeaders,
+    tokensIn: provenance.tokensIn,
+    tokensOut: provenance.tokensOut,
+    costUsd: provenance.costUsd,
     // One row per PR, UPSERTed on every recompute: `computed_at` records the
     // LATEST scan, so it must be bumped explicitly (the column default only
     // applies on insert).
@@ -103,6 +139,24 @@ export async function upsertIntent(
     .onConflictDoUpdate({ target: t.prIntent.prId, set: values })
     .returning();
   return row!;
+}
+
+/**
+ * Which of these PRs already have an intent. `pr_intent` is OWNED by this module,
+ * so the PR-list read (`modules/pulls`) asks for this through the
+ * `container.reviewRepo` facade instead of querying `pr_intent` itself — a table
+ * has exactly one owning module.
+ *
+ * One `IN` query for the whole page, riding the PK's B-tree (`pr_intent.pr_id` is
+ * the primary key). `inArray` with an empty list is invalid SQL, hence the guard.
+ */
+export async function prIdsWithIntent(db: Db, prIds: string[]): Promise<string[]> {
+  if (prIds.length === 0) return [];
+  const rows = await db
+    .select({ prId: t.prIntent.prId })
+    .from(t.prIntent)
+    .where(inArray(t.prIntent.prId, prIds));
+  return rows.map((r) => r.prId);
 }
 
 /** The raw row (provenance included) — the service maps it to `PrIntentRecord`. */

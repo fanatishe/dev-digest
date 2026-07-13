@@ -35,6 +35,13 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
   const service = new ReviewService(container);
   const intentService = new IntentService(container);
 
+  // Register the INTENT_JOB_KIND handler exactly once, at plugin load — the same
+  // shape as `repo-intel/routes.ts` → `registerIndexJobHandlers()`. `pulls/routes.ts`
+  // enqueues this kind when the PR list finds a PR with no intent, and
+  // `JobRunner.enqueue` THROWS if no handler is registered, so this line is what
+  // makes the auto-fill work at all. No new route: the job IS the trigger.
+  intentService.registerIntentJobHandler(app.log);
+
   // ---- Run a review (manual trigger) -------------------------------
   // Tight per-route limit: each call can fan out to expensive LLM runs.
   // Body stays a tolerant manual parse (both fields optional; empty body is OK).

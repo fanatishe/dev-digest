@@ -74,6 +74,15 @@ export const PrIntentRecord = Intent.extend({
   tokens_full: z.number().int().nullish(),
   /** Tokens the headers-only rendering actually cost. */
   tokens_headers: z.number().int().nullish(),
+  /**
+   * What the provider actually billed for the intent call. Distinct from
+   * `tokens_full`/`tokens_headers` (our tokenizer's count of two renderings of
+   * the diff): these come off the LLM response. They exist because intent is now
+   * computed automatically — spend nobody clicked for must still leave a receipt.
+   */
+  tokens_in: z.number().int().nullish(),
+  tokens_out: z.number().int().nullish(),
+  cost_usd: z.number().nullish(),
   computed_at: z.string().nullish(),
   /** Computed on read: the PR's head has moved since the intent was derived. */
   is_stale: z.boolean().nullish(),

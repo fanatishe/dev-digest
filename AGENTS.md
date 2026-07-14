@@ -13,6 +13,7 @@ and unused contracts are scaffolding for later lessons (L01–L08), not dead cod
 - **client** `@devdigest/web` — Next.js 15 · React 19 · TanStack Query (`:3000`)
 - **reviewer-core** `@devdigest/reviewer-core` — pure engine, injected LLMProvider
 - **e2e** `@devdigest/e2e` — Vercel agent-browser (Rust+CDP), deterministic
+- **mcp** `@devdigest/mcp` — local MCP server (stdio), reaches the API over HTTP only
 - Node ≥ 22 · pnpm ≥ 10 · Docker (Postgres only)
 
 ## Repo-wide conventions (non-default — read before assuming)
@@ -39,7 +40,8 @@ and unused contracts are scaffolding for later lessons (L01–L08), not dead cod
 ## Module conventions live in the module's own CLAUDE.md
 
 Do not duplicate module rules here. Each is auto-loaded when you work in that folder:
-`server/CLAUDE.md` · `client/CLAUDE.md` · `reviewer-core/CLAUDE.md` · `e2e/CLAUDE.md`.
+`server/CLAUDE.md` · `client/CLAUDE.md` · `reviewer-core/CLAUDE.md` · `e2e/CLAUDE.md` ·
+`mcp/CLAUDE.md`.
 
 Each module also carries `docs/` (design SoT), `specs/` (contracts), and an
 append-only `INSIGHTS.md` (engineering learnings). Link to them — don't copy them here.
@@ -50,7 +52,7 @@ Knowledge compounds per module via `<module>/INSIGHTS.md`. See
 `.claude/skills/engineering-insights/SKILL.md`.
 
 - **At session start** — before working in a module (`server` · `client` ·
-  `reviewer-core` · `e2e`), read that module's `INSIGHTS.md` and **summarize the top 3
+  `reviewer-core` · `e2e` · `mcp`), read that module's `INSIGHTS.md` and **summarize the top 3
   most relevant points** for the task. Treat entries as high-confidence guidance unless
   told otherwise.
 - **At session end** — run `/engineering-insights`: identify new patterns / mistakes /

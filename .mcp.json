@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "devdigest": {
+      "type": "stdio",
+      "command": "mcp/bin/devdigest-mcp",
+      "env": {
+        "DEVDIGEST_API_URL": "http://localhost:3001"
+      }
+    }
+  }
+}

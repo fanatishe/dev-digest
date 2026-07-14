@@ -4,5 +4,11 @@
       "Bash(node_modules/.bin/tsc --noEmit)",
       "Bash(node_modules/.bin/vitest run *)"
     ]
+  },
+  "enabledMcpjsonServers": [
+    "devdigest"
+  ],
+  "enabledPlugins": {
+    "github@claude-plugins-official": true
   }
 }

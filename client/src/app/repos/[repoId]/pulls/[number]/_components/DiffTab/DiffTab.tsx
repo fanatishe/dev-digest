@@ -27,6 +27,8 @@ interface DiffTabProps {
   findings: DiffFinding[];
   /** Deep-link a badge to its finding on the Findings tab (one replace, no reload). */
   onOpenFinding: (id: string) => void;
+  /** `?file=` — a path to scroll to, set when the Blast card reveals a changed symbol. */
+  targetFile?: string | null;
   /** Inline commenting is offered only on open PRs (GitHub rejects otherwise). */
   canComment?: boolean;
 }
@@ -37,6 +39,7 @@ export function DiffTab({
   files,
   findings,
   onOpenFinding,
+  targetFile,
   canComment,
 }: DiffTabProps) {
   const t = useTranslations("prReview");
@@ -52,6 +55,20 @@ export function DiffTab({
   // Derived, not stored: no smart diff (still loading, or the query errored) just
   // means the flat viewer — which is always correct.
   const showSmart = order === "smart" && !!smart;
+
+  // `?file=` reveal — the Blast card's "show me this changed symbol in the diff".
+  //
+  // Depends on `showSmart` as well as `targetFile`: the two viewers mount different
+  // DOM, and the smart-diff query resolves AFTER this tab first renders. Keying the
+  // effect on `targetFile` alone would run it against the flat viewer, then never
+  // again once the smart viewer swapped in — the scroll would land on a node that no
+  // longer exists. `FileCard` carries `data-path` in both viewers, so once the right
+  // one is mounted this finds it.
+  React.useEffect(() => {
+    if (!targetFile) return;
+    const el = document.querySelector(`[data-path="${CSS.escape(targetFile)}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [targetFile, showSmart]);
 
   const commenting: DiffCommentApi = {
     comments: comments ?? [],

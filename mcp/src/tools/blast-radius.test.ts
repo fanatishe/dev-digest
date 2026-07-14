@@ -1,22 +1,21 @@
 /**
- * `get_blast_radius` — the stub's tests.
+ * `get_blast_radius` — the WIRED tool (was a stub until L04).
  *
- * Two of the three assertions here are about a tool that does nothing, which is the
- * point: the STUB is temporary, the CONTRACT is not. The schema-keys test is the
- * regression test that fails the day someone "helpfully" changes the arguments before
- * the tool is wired — at which point every already-written host prompt and every
- * example in `specs/tools.md` silently rots.
+ * The schema-keys test below survived the un-stubbing UNCHANGED, and that is the whole
+ * point: `{ repo, pr }` was frozen before the tool could do anything, so wiring it
+ * broke no host prompt and no doc. It stays here as the regression guard it always was.
  *
- * No MCP SDK server is constructed: `registerTool` is the only surface this file
- * touches, so a capturing test double is both sufficient and faster than booting a
- * transport.
+ * No MCP SDK server and no `fetch`: `registerTool` is the only SDK surface this file
+ * touches, and the service takes an `ApiPort` — so a capturing double plus a plain mock
+ * object covers both, faster than booting a transport.
  */
 import { describe, expect, it } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { NOT_IMPLEMENTED_BLAST } from '../errors.js';
+import type { ApiPort, McpConfig } from '../ports.js';
+import { BlastService } from '../services/blast.service.js';
 import { registerBlastRadiusTool } from './blast-radius.js';
-import { BLAST_RADIUS_STUB_MESSAGE } from './blast-radius.constants.js';
+import type { BlastRadius, PrMeta, Repo } from '../types.js';
 
 interface CapturedTool {
   name: string;
@@ -29,95 +28,149 @@ interface CapturedTool {
   };
   handler: (...args: unknown[]) => Promise<{
     isError?: boolean;
+    structuredContent?: Record<string, unknown>;
     content: { type: string; text: string }[];
   }>;
 }
 
+const REPO = { id: 'repo-uuid', full_name: 'acme/payments-api' } as Repo;
+const PR = { id: 'pr-uuid', number: 482 } as PrMeta;
+
+const BLAST: BlastRadius = {
+  changed_symbols: [{ name: 'rateLimit', file: 'src/middleware/ratelimit.ts', kind: 'function' }],
+  downstream: [
+    {
+      symbol: 'rateLimit',
+      callers: Array.from({ length: 12 }, (_, i) => ({
+        name: `caller${i}`,
+        file: `src/api/f${i}.ts`,
+        line: i + 1,
+      })),
+      endpoints_affected: ['GET /api/public/items', 'POST /api/public/webhooks'],
+      crons_affected: ['reset-rate-buckets (hourly)'],
+    },
+  ],
+  summary: '1 symbol · 12 callers · 2 endpoints · 1 cron/job',
+  degraded: false,
+  reason: null,
+};
+
+const config = { apiUrl: 'http://localhost:3001' } as McpConfig;
+
+function mockApi(blast: BlastRadius): ApiPort {
+  return {
+    listRepos: async () => [REPO],
+    listPulls: async () => [PR],
+    getBlastRadius: async () => blast,
+  } as unknown as ApiPort;
+}
+
 /** Captures the registration instead of speaking the protocol. */
-function captureRegistration(): CapturedTool {
+function captureRegistration(blast: BlastRadius = BLAST): CapturedTool {
   let captured: CapturedTool | undefined;
   const server = {
-    registerTool: (name: string, config: CapturedTool['config'], handler: CapturedTool['handler']) => {
-      captured = { name, config, handler };
+    registerTool: (name: string, cfg: CapturedTool['config'], handler: CapturedTool['handler']) => {
+      captured = { name, config: cfg, handler };
     },
   } as unknown as McpServer;
 
-  registerBlastRadiusTool(server);
+  registerBlastRadiusTool(server, new BlastService(mockApi(blast), config));
   if (!captured) throw new Error('registerBlastRadiusTool registered nothing');
   return captured;
 }
 
-const FROZEN_DESCRIPTION =
-  'Which symbols a pull request changes and what downstream code calls them. NOT IMPLEMENTED YET — calling it returns instructions, not data.';
-
 describe('get_blast_radius — the registration (the LOCKED contract)', () => {
-  it('registers under the locked name, with the frozen description', () => {
-    const tool = captureRegistration();
-
-    expect(tool.name).toBe('get_blast_radius');
-    expect(tool.config.description).toBe(FROZEN_DESCRIPTION);
+  it('registers under the locked name', () => {
+    expect(captureRegistration().name).toBe('get_blast_radius');
   });
 
-  it('takes exactly the REAL args — inputSchema keys are ["repo", "pr"]', () => {
-    // The contract-stability regression test. These are the arguments the tool will
-    // take once it IS wired; freezing them now is what makes finishing it a
+  it('STILL takes exactly ["repo", "pr"] — the args survived the un-stubbing', () => {
+    // The contract-stability regression test, unchanged from when the tool was a stub.
+    // Freezing these before the tool did anything is what made wiring it a
     // one-function change instead of a re-plumbing of every caller.
-    const tool = captureRegistration();
-
-    expect(Object.keys(tool.config.inputSchema ?? {})).toEqual(['repo', 'pr']);
+    expect(Object.keys(captureRegistration().config.inputSchema ?? {})).toEqual(['repo', 'pr']);
   });
 
-  it('declares NO outputSchema, and is annotated read-only', () => {
-    // An outputSchema would oblige the handler to return a matching
-    // `structuredContent` — which a stub cannot produce.
+  it('now declares an outputSchema, and is still annotated read-only', () => {
     const tool = captureRegistration();
-
-    expect(tool.config.outputSchema).toBeUndefined();
+    // The stub had none: an outputSchema obliges the handler to return matching
+    // `structuredContent`, which a stub could not produce. It can now.
+    expect(Object.keys(tool.config.outputSchema ?? {})).toContain('downstream');
+    expect(tool.config.outputSchema).toHaveProperty('degraded');
     expect(tool.config.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: true });
+  });
+
+  it('no longer describes itself as unimplemented', () => {
+    const description = captureRegistration().config.description ?? '';
+    expect(description).not.toMatch(/not implemented/i);
+    expect(description).toMatch(/endpoint/i);
   });
 });
 
 describe('get_blast_radius — the handler', () => {
-  it('returns isError: true with the not-implemented message', async () => {
-    // isError is TRUE here on purpose (unlike run_agent_on_pr's timeout path): the call
-    // is free, there is no spend to protect, and no retry could cost money.
+  it('returns symbols, callers and the endpoints they put at risk', async () => {
     const tool = captureRegistration();
+    const res = await tool.handler({ repo: 'acme/payments-api', pr: 482 }, {});
 
-    const result = await tool.handler({ repo: 'acme/payments-api', pr: 482 }, {});
-
-    expect(result.isError).toBe(true);
-    expect(result.content).toHaveLength(1);
-    expect(result.content[0]?.type).toBe('text');
-    expect(result.content[0]?.text).toBe(BLAST_RADIUS_STUB_MESSAGE);
+    expect(res.isError).toBeUndefined(); // a real answer is not an error
+    const sc = res.structuredContent!;
+    expect(sc).toMatchObject({ repo: 'acme/payments-api', pr: 482, degraded: false });
+    expect(sc['endpoints_affected']).toEqual([
+      'GET /api/public/items',
+      'POST /api/public/webhooks',
+    ]);
+    expect(sc['crons_affected']).toEqual(['reset-rate-buckets (hourly)']);
   });
 
-  it('leads onward (P4): the message names get_findings as the next tool', async () => {
+  it('caps callers but keeps the TRUE total, so the truncation is visible', async () => {
     const tool = captureRegistration();
+    const res = await tool.handler({ repo: 'acme/payments-api', pr: 482 }, {});
+    const downstream = (
+      res.structuredContent!['downstream'] as { callers: unknown[]; total_callers: number }[]
+    )[0]!;
 
-    const text = (await tool.handler({ repo: 'acme/payments-api', pr: 482 }, {})).content[0]?.text ?? '';
-
-    expect(text).toMatch(/not implemented/i);
-    expect(text).toContain('get_findings');
+    expect(downstream.callers).toHaveLength(8); // MAX_CALLERS_SHOWN
+    // Without this, a model would conclude it had seen all 12 call sites.
+    expect(downstream.total_callers).toBe(12);
   });
 
-  it('states the three implementation steps, and that the missing piece is an HTTP route', async () => {
+  it('folds a caller to "file:line" rather than three keys', async () => {
     const tool = captureRegistration();
-
-    const text = (await tool.handler({ repo: 'acme/payments-api', pr: 482 }, {})).content[0]?.text ?? '';
-
-    // (1) a route in the server, (2) ApiPort + http-client, (3) a service method.
-    expect(text).toMatch(/\(1\)[\s\S]*route[\s\S]*repo-intel/i);
-    expect(text).toMatch(/\(2\)[\s\S]*ApiPort[\s\S]*http-client/i);
-    expect(text).toMatch(/\(3\)[\s\S]*service method/i);
-
-    // The diagnosis: engine + contract exist; only the HTTP route is missing.
-    expect(text).toMatch(/NO HTTP route|no HTTP route/);
-    expect(text).toContain('repo-intel/service.ts:220');
-    expect(text).toContain('contracts/brief.ts');
+    const res = await tool.handler({ repo: 'acme/payments-api', pr: 482 }, {});
+    const first = (res.structuredContent!['downstream'] as { callers: { at: string }[] }[])[0]!
+      .callers[0]!;
+    expect(first.at).toBe('src/api/f0.ts:1');
   });
 
-  it('composes the domain-ring message — one source of truth, not a second copy', () => {
-    // If someone forks the prose into this folder, these two drift on the first edit.
-    expect(BLAST_RADIUS_STUB_MESSAGE).toContain(NOT_IMPLEMENTED_BLAST);
+  it('the markdown block SUMMARIZES — it is never a JSON dump', async () => {
+    const tool = captureRegistration();
+    const res = await tool.handler({ repo: 'acme/payments-api', pr: 482 }, {});
+    const text = res.content[0]!.text;
+
+    expect(text).toContain('rateLimit');
+    expect(text).toContain('GET /api/public/items');
+    // Stringifying `structuredContent` into the text block doubles the token cost of
+    // every call for zero gain — the package-wide rule, asserted here.
+    expect(text).not.toContain('{"');
+  });
+
+  it('a DEGRADED index says "unknown", not "nothing is affected"', async () => {
+    // The dangerous case. An unindexed repo returns an EMPTY blast radius, which is
+    // indistinguishable from "this change breaks nothing" unless the tool says so.
+    const tool = captureRegistration({
+      changed_symbols: [],
+      downstream: [],
+      summary: 'No indexed symbols in the changed files.',
+      degraded: true,
+      reason: 'no_data',
+    });
+    const res = await tool.handler({ repo: 'acme/payments-api', pr: 482 }, {});
+
+    expect(res.structuredContent!['degraded']).toBe(true);
+    const next = res.structuredContent!['next'] as string;
+    expect(next).toMatch(/INCOMPLETE/);
+    expect(next).toMatch(/not "nothing is affected"/);
+    // …and it leads onward (P4).
+    expect(next).toContain('get_findings');
   });
 });

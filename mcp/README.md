@@ -17,7 +17,7 @@ none). Start the stack with `./scripts/dev.sh` first — every tool needs it.
 | `run_agent_on_pr` | **PAID** | Runs an agent on a PR, **waits** for it to finish, returns the verdict + findings — in one call. |
 | `get_findings` | free | The verdict + findings of a completed review. Defaults to the latest. Never starts a review. |
 | `get_conventions` | free | The house-style conventions DevDigest extracted from a repo, with the evidence each was grounded in. |
-| `get_blast_radius` | free | **Not implemented** — registers with its real schema and returns instructions. The homework exercise. |
+| `get_blast_radius` | free | Which symbols a PR changes, what calls them, and the endpoints/crons they put at risk. Reads the index built at clone time — no model call. |
 
 Identifiers are forgiving by design: `repo` takes `"owner/name"` **or** a uuid, `pr`
 takes a number **or** a uuid, `agent` takes an id **or** a name (case-insensitive).

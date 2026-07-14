@@ -166,23 +166,22 @@ export function runFailedMessage(runId: string, status: string, error?: string |
 }
 
 /**
- * `get_blast_radius`'s whole body. The engine exists (`repoIntel.getBlastRadius()` in
- * the server's repo-intel module) and so does the `BlastRadius` contract — what is
- * missing is an HTTP route. That is the exercise, stated precisely.
+ * The blast radius came back EMPTY because the repo has no usable index — not because
+ * nothing is affected. Those two look identical on the wire and mean opposite things,
+ * so the tool must say which one it is: an empty-and-degraded result read as "safe to
+ * merge" is the worst failure this surface has.
+ *
+ * Leads onward (P4), like every message here: it names the thing that fixes it.
  */
-export const NOT_IMPLEMENTED_BLAST = [
-  'get_blast_radius is not implemented yet — this message is the tool, deliberately.',
-  '',
-  'Why: DevDigest computes a blast radius internally (repoIntel.getBlastRadius(), plus the',
-  'BlastRadius contract in the shared contracts package), but the API exposes NO HTTP route for',
-  'it — and this MCP server reaches DevDigest over HTTP only. It cannot call the engine.',
-  '',
-  "To finish it: (1) add a route in the API's repo-intel module (modules/repo-intel/routes.ts),",
-  '(2) add getBlastRadius() to ApiPort + api/http-client.ts, (3) add a service method and swap',
-  "this handler's body. The tool name, description and input schema do not change.",
-  '',
-  'Meanwhile: call get_findings for what the reviewer already flagged on this PR.',
-].join('\n');
+export function blastDegradedMessage(repoFullName: string, reason: string | null): string {
+  const because = reason ? ` (${reason})` : '';
+  return (
+    `DevDigest has no usable code index for ${repoFullName}${because}, so this blast radius is ` +
+    'INCOMPLETE — an empty result here means "unknown", not "nothing is affected". ' +
+    'Re-index from the DevDigest UI (the repo\'s "Re-analyze" action) or POST /repos/:id/resync, ' +
+    'then call get_blast_radius again. Meanwhile, get_findings shows what the reviewer flagged.'
+  );
+}
 
 /** Maps a decoded `ApiError` onto an onward-leading message. */
 export function apiErrorMessage(err: ApiError, baseUrl: string): string {

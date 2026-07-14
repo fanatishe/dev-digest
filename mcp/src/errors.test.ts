@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   ApiError,
   ApiUnreachableError,
-  NOT_IMPLEMENTED_BLAST,
   ToolError,
   agentNotFoundMessage,
+  blastDegradedMessage,
   apiDownMessage,
   apiErrorMessage,
   noAgentsMessage,
@@ -42,7 +42,7 @@ const CATALOGUE: Record<string, string> = {
   runFailed: runFailedMessage('run-1', 'failed', 'provider 429'),
   apiError500: apiErrorMessage(new ApiError(500, 'internal_error', 'boom'), BASE),
   apiError429: apiErrorMessage(new ApiError(429, 'rate_limited', 'slow down'), BASE),
-  notImplementedBlast: NOT_IMPLEMENTED_BLAST,
+  blastDegraded: blastDegradedMessage('acme/payments-api', 'no_data'),
 };
 
 describe('the error catalogue leads onward (P4)', () => {
@@ -101,10 +101,19 @@ describe('the individual messages', () => {
     expect(message).not.toMatch(/\d+s\b/);
   });
 
-  it('the blast-radius message states the exercise and offers the fallback tool', () => {
-    expect(NOT_IMPLEMENTED_BLAST).toContain('get_findings');
-    expect(NOT_IMPLEMENTED_BLAST).toContain('ApiPort');
-    expect(NOT_IMPLEMENTED_BLAST).toMatch(/route/i);
+  it('the degraded-blast message says "unknown", not "nothing is affected"', () => {
+    // THE load-bearing assertion of this file. An unindexed repo yields an EMPTY blast
+    // radius, which is indistinguishable on the wire from "this change is safe". If
+    // this message ever stops saying so out loud, the tool starts quietly telling
+    // people their PR breaks nothing.
+    const msg = blastDegradedMessage('acme/payments-api', 'no_data');
+    expect(msg).toMatch(/INCOMPLETE/);
+    expect(msg).toMatch(/not "nothing is affected"/);
+    expect(msg).toContain('acme/payments-api');
+    expect(msg).toContain('no_data');
+    // …and it leads onward, like every message here.
+    expect(msg).toContain('get_findings');
+    expect(msg).toMatch(/resync|Re-analyze/);
   });
 });
 

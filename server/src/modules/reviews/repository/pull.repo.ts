@@ -55,6 +55,31 @@ export async function getPrFiles(
 }
 
 /**
+ * `pr_number → title` for every PR of a repo that DevDigest has imported.
+ *
+ * Enriches PR-history titles: a MERGE commit's subject is only its branch name, and its
+ * body (which holds the real title) is sometimes empty. When it is, and we happen to
+ * have imported that PR, its GitHub title beats the branch name. Best-effort — a PR that
+ * was never imported simply isn't in the map, and the caller falls back to the subject.
+ *
+ * Workspace-scoped, like every read on the facade: the map is keyed by PR number, which
+ * is not unique across repos, so it is filtered to THIS repo within THIS workspace.
+ */
+export async function getPrTitlesForRepo(
+  db: Db,
+  workspaceId: string,
+  repoId: string,
+): Promise<Map<number, string>> {
+  const rows = await db
+    .select({ number: t.pullRequests.number, title: t.pullRequests.title })
+    .from(t.pullRequests)
+    .where(
+      and(eq(t.pullRequests.workspaceId, workspaceId), eq(t.pullRequests.repoId, repoId)),
+    );
+  return new Map(rows.map((r) => [r.number, r.title]));
+}
+
+/**
  * Record the commit a review just ran against, so the PR list can derive
  * `reviewed` vs `needs_review` (head moved since the last review) vs `stale`.
  */

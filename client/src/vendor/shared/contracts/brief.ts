@@ -55,6 +55,17 @@ export const BlastRadius = z.object({
   changed_symbols: z.array(ChangedSymbol),
   downstream: z.array(DownstreamImpact),
   summary: z.string(),
+  /**
+   * Index health, surfaced so the panel can badge a partial answer instead of
+   * rendering an empty card that looks like "nothing is affected".
+   *
+   * This has to live IN the contract: `fastify-type-provider-zod` serializes the
+   * response through this schema and silently drops any key it does not declare,
+   * so a degraded flag bolted on beside it would never reach the client.
+   */
+  degraded: z.boolean().nullish(),
+  /** Why it is degraded — `no_data` | `flag_off` | `index_partial` | … */
+  reason: z.string().nullish(),
 });
 export type BlastRadius = z.infer<typeof BlastRadius>;
 

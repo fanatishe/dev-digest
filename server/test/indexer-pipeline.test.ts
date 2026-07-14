@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { runFullIndex } from '../src/modules/repo-intel/pipeline/full.js';
 import { runIncremental } from '../src/modules/repo-intel/pipeline/incremental.js';
 import type { RepoIntelRepository } from '../src/modules/repo-intel/repository.js';
-import { INDEXER_VERSION } from '../src/modules/repo-intel/constants.js';
+import { HISTORY_DEPTH, INDEXER_VERSION } from '../src/modules/repo-intel/constants.js';
 import type { IndexState } from '../src/modules/repo-intel/types.js';
 import type { Container } from '../src/platform/container.js';
 
@@ -122,6 +122,14 @@ function makeRepoStub(opts: {
 // Minimal Container — only the fields the pipeline reads.
 interface MiniGit {
   currentHead: () => Promise<string>;
+  /**
+   * The index job DEEPENS the shallow clone before anything reads history. It is
+   * declared here (and not left to `safeDeepen`'s try/catch to swallow) on purpose: if
+   * this were absent, calling it would throw a TypeError, `safeDeepen` would catch it,
+   * and every test would still pass while the deepen silently never happened — which is
+   * precisely the failure mode that made PR history come back empty for every PR.
+   */
+  deepen?: (ref: { owner: string; name: string }, depth: number) => Promise<void>;
   diffNameOnly: (
     ref: { owner: string; name: string },
     base: string,
@@ -175,8 +183,12 @@ describe('runFullIndex', () => {
     const stub = makeRepoStub({
       basics: { id: 'r1', owner: 'acme', name: 'app', clonePath: root },
     });
+    const deepened: { owner: string; name: string; depth: number }[] = [];
     const container = makeContainer({
       currentHead: async () => 'sha-head',
+      deepen: async (ref, depth) => {
+        deepened.push({ ...ref, depth });
+      },
       diffNameOnly: async () => [],
     });
 
@@ -184,6 +196,9 @@ describe('runFullIndex', () => {
 
     // Clean pass (no soft-budget / graph failure / parse errors) → 'full' (T3).
     expect(result.status).toBe('full');
+    // The clone is created with CLONE_DEPTH = 1, so it holds ONE commit and
+    // `git log -- <file>` sees nothing. The index job is what grows it.
+    expect(deepened).toEqual([{ owner: 'acme', name: 'app', depth: HISTORY_DEPTH }]);
     expect(result.filesIndexed).toBe(2);
     expect(result.filesSkipped).toBe(0);
 
@@ -253,6 +268,27 @@ describe('runFullIndex', () => {
     expect(result.filesIndexed).toBe(0);
     expect(result.reason).toBe('no_files');
     expect(stub.getState()!.lastIndexedSha).toBe('sha-empty');
+  });
+
+  it('still indexes fully when the deepen FAILS — history is an enrichment, not the job', async () => {
+    // An offline remote, or a server that refuses `--deepen`, must cost us the PR
+    // history and NOTHING else. The symbol/graph index is what this job exists for.
+    await writeFileAt(root, 'a.ts', 'export function alpha() { return 1; }\n');
+
+    const stub = makeRepoStub({
+      basics: { id: 'r4', owner: 'acme', name: 'app', clonePath: root },
+    });
+    const container = makeContainer({
+      currentHead: async () => 'sha-head',
+      deepen: async () => {
+        throw new Error('remote refused --deepen');
+      },
+      diffNameOnly: async () => [],
+    });
+
+    const result = await runFullIndex(container, stub.repo, { repoId: 'r4' });
+    expect(result.status).toBe('full');
+    expect(result.filesIndexed).toBe(1);
   });
 });
 

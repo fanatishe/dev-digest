@@ -9,14 +9,19 @@
  */
 import type {
   AgentSummary,
+  BlastCallerSummary,
+  BlastImpactSummary,
   ConciseFinding,
   ConventionSummary,
   FullFinding,
 } from './schemas.js';
 import type {
   Agent,
+  BlastCaller,
+  BlastRadiusResult,
   ConventionCandidate,
   Detail,
+  DownstreamImpact,
   FindingRecord,
   ProjectedFinding,
   RunOnPrResult,
@@ -164,5 +169,63 @@ export function conventionsMarkdown(
     `${conventions.length} convention(s) extracted from ${repoFullName}:`,
     ...lines,
     ...(hint ? ['', hint] : []),
+  ].join('\n');
+}
+
+// ---- Blast radius ---------------------------------------------------------------
+
+/** `{name, file, line}` → `"publicRouter at src/api/public/index.ts:23"`. */
+export function toBlastCallerSummary(c: BlastCaller): BlastCallerSummary {
+  return { name: c.name, at: `${c.file}:${c.line}` };
+}
+
+/**
+ * `DownstreamImpact` → the projection, with callers capped.
+ *
+ * `total_callers` is kept so the cap is VISIBLE. Silently showing 20 of 300 callers
+ * would let a model conclude it had seen the whole blast radius.
+ */
+export function toBlastImpactSummary(d: DownstreamImpact, limit: number): BlastImpactSummary {
+  return {
+    symbol: d.symbol,
+    callers: d.callers.slice(0, limit).map(toBlastCallerSummary),
+    total_callers: d.callers.length,
+    endpoints_affected: d.endpoints_affected,
+    crons_affected: d.crons_affected,
+  };
+}
+
+/**
+ * The ONE markdown block that rides alongside `structuredContent` — a SUMMARY of it,
+ * never `JSON.stringify` of it. Stringifying the same payload twice doubles the token
+ * cost of every call for zero added information.
+ */
+export function blastMarkdown(r: BlastRadiusResult): string {
+  if (r.changed_symbols.length === 0) {
+    return [`No indexed symbols in the files changed by ${r.repo}#${r.pr}.`, r.next ?? '']
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  const body = r.downstream.map((d) => {
+    const head = `- ${d.symbol}() — ${d.total_callers} caller(s)`;
+    const callers = d.callers.map((c) => `    · ${c.name} at ${c.at}`);
+    const more =
+      d.total_callers > d.callers.length
+        ? [`    · … ${d.total_callers - d.callers.length} more`]
+        : [];
+    const reach = [
+      ...d.endpoints_affected.map((e) => `    → ${e}`),
+      ...d.crons_affected.map((c) => `    → ${c} (cron)`),
+    ];
+    return [head, ...callers, ...more, ...reach].join('\n');
+  });
+
+  return [
+    `Blast radius of ${r.repo}#${r.pr} — ${r.summary}`,
+    ...(r.degraded ? ['', '⚠ INCOMPLETE INDEX — see `next`.'] : []),
+    '',
+    ...body,
+    ...(r.next ? ['', r.next] : []),
   ].join('\n');
 }

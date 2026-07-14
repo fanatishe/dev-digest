@@ -115,15 +115,21 @@ me again — call `get_findings` with this `run_id`*.
 whole argument. (`server/INSIGHTS.md`: *"check-then-act on a billable job is a recurring
 bill."*)
 
-The mirror image is `get_blast_radius`, which returns **`isError: true`** — and that is
-equally deliberate:
+The rule generalises:
 
 ```mermaid
 flowchart LR
   Q{"Could a retry of this call<br/>cost the user money?"}
   Q -- "yes — run_agent_on_pr timed out,<br/>the model call is already billed" --> F["isError: FALSE<br/>+ status: 'running'<br/>+ 'do NOT call again — use get_findings(run_id)'"]
-  Q -- "no — get_blast_radius is free<br/>and fails identically every time" --> T["isError: TRUE<br/>+ instructions<br/>+ 'meanwhile, call get_findings'"]
+  Q -- "no — the call is free<br/>and a retry costs nothing" --> T["report the real state<br/>in-band, and let the model retry"]
 ```
+
+**`get_blast_radius` used to be the mirror image** — a stub returning `isError: true`,
+because the call was free, there was no spend to protect, and it would fail identically
+every time. Now that it is wired (L04), `isError` is gone: a **degraded index is not a
+failure**, it is a real, partial answer. It is reported in-band (`degraded: true` + a
+`next` that names the fix), because the one thing that must never happen here is an empty
+blast radius being read as *"nothing is affected"*.
 
 `idempotentHint: false` on `run_agent_on_pr` says the same thing in metadata; the
 description says it in prose. Belt and braces, because the failure mode is a double
@@ -206,35 +212,43 @@ Two costs we chose to pay, named rather than hidden:
 
 ---
 
-## 6. The flag: `get_blast_radius` needs a **server** change, and that is the exercise
+## 6. `get_blast_radius`: what the frozen contract bought (RESOLVED — L04)
 
-The stub is not laziness, and it is not a missing service method. It is a **missing HTTP
-route**, and the boundary that makes it missing is the whole point of this package.
+For most of this package's life `get_blast_radius` was a **registered stub**. The engine
+existed (`repoIntel.getBlastRadius()`) and so did the `BlastRadius` contract — what was
+missing was an **HTTP route** between them. And because `mcp` talks to DevDigest over HTTP
+and nothing else, a missing route was a **hard wall**, not an inconvenience: no clever
+import gets around it, and `.dependency-cruiser.cjs` forbids trying (`no-server-internals`).
+
+L04 added the route. The tool is now wired:
 
 ```mermaid
 flowchart LR
-  MCP["mcp/ — reaches DevDigest<br/>over HTTP ONLY"] -- "GET /repos/:id/conventions ✅" --> R1["repo-intel/routes.ts"]
-  MCP -- "GET /repos/:id/index-state ✅" --> R1
-  MCP -. "GET /pulls/:id/blast-radius ❌<br/>THE ROUTE DOES NOT EXIST" .-> R1
-  R1 --> SVC["repo-intel/service.ts:220<br/>repoIntel.getBlastRadius(repoId, changedFiles) ✅ EXISTS"]
-  SVC --> C["contracts/brief.ts<br/>the BlastRadius Zod contract ✅ EXISTS"]
+  MCP["mcp/ — reaches DevDigest<br/>over HTTP ONLY"] -- "GET /pulls/:id/blast-radius ✅" --> R["pulls/routes.ts"]
+  R --> SVC["repo-intel/service.ts<br/>repoIntel.getBlastRadius(repoId, changedFiles)"]
+  SVC --> IDX[("the index, built at CLONE time:<br/>symbols · references · import graph<br/>file_rank · file_facts")]
+  R --> MAP["pulls/blast.ts (PURE)<br/>BlastResult → BlastRadius"]
+  MAP --> C["contracts/brief.ts<br/>the BlastRadius Zod contract"]
 ```
 
-Both halves are already built. The engine works; the contract is defined. What is missing
-is the wire between them — and since `mcp` talks to DevDigest over HTTP and nothing else,
-a missing route is a **hard wall**, not an inconvenience. There is no clever import that
-gets around it (and `.dependency-cruiser.cjs` forbids trying: `no-server-internals`).
+**The point of this section is what did NOT change.** The stub registered with its
+**real** name and `inputSchema` — `{ repo, pr }`, frozen before the tool could do
+anything. Wiring it was three steps (a route, a port method, a service), and **only the
+third touched a file in this package's tool folder**. No host prompt, no doc and no
+example had to be rewritten, because none of them were ever written against a placeholder.
+`blast-radius.test.ts` still asserts the input-schema keys are exactly `['repo', 'pr']` —
+that test predates the implementation and survived it unchanged, which is the evidence.
 
-So the tool registers with its **real** name, description and `inputSchema`
-(`{ repo, pr }`, frozen), declares **no** `outputSchema`, takes **no** `ApiPort`, and its
-handler returns instructions. Finishing it is three steps — a route, a port method, a
-service method — and **only the third touches this package's tool file**. That is what
-freezing the input contract buys, and it is why
-`blast-radius.test.ts` asserts the schema keys are exactly `['repo', 'pr']`: that test
-fails the day someone "helpfully" changes the arguments before the tool is wired.
+Two things the un-stubbing did change, both because the stub's reasoning stopped applying:
 
-**The alternative we rejected:** not registering it at all, and shipping four tools. That
-is defensible — it stops paying the ~30 tokens of rent. We register it because the frozen
-contract *is* the deliverable: it makes the homework a one-function change rather than a
-design exercise, and an honest description (*"NOT IMPLEMENTED YET — calling it returns
-instructions, not data"*) avoids the wasted call entirely, which beats failing gracefully.
+- **`outputSchema` appeared.** The stub had none *because* declaring one obliges the
+  handler to produce a matching `structuredContent` — which a stub cannot. It can now.
+- **`isError: true` went away.** It was right for a call that would fail identically every
+  time. But a **degraded index is not a failure** — it is a real, partial answer, and it
+  must be reported as one. An empty blast radius from an unindexed repo looks exactly like
+  *"this change breaks nothing"*, so `degraded: true` and a `next` that says
+  *"unknown, not nothing"* are the load-bearing part of the response.
+
+**The alternative we rejected, in hindsight:** not registering the stub at all and shipping
+four tools. It would have saved ~30 tokens of rent per chat — and cost a re-plumbing of
+every caller the day the route landed. The frozen contract *was* the deliverable.

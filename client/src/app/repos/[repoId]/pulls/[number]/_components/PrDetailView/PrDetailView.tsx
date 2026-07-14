@@ -64,6 +64,11 @@ export function PrDetailView({ repoId, number }: { repoId: string; number: strin
   const severity: Severity | null = parseSeverity(search.get("severity"));
   // Deep-link to a specific finding (from the PR-list popover) → reveal it below.
   const finding = search.get("finding");
+  // Deep-link to a changed file (from the Blast-radius card) → scroll to it in the diff.
+  // Validated against THIS PR's file list, not trusted: the value is attacker-controlled
+  // query-string input, and it is interpolated into a DOM selector downstream.
+  const fileParam = search.get("file");
+  const targetFile = pr?.files.some((f) => f.path === fileParam) ? fileParam : null;
   /**
    * Write several query params in ONE navigation. Two sequential single-key
    * writes would both read the same (stale) `search` snapshot and the second
@@ -157,7 +162,19 @@ export function PrDetailView({ repoId, number }: { repoId: string; number: strin
       />
 
       <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
-        {tab === "overview" && <OverviewTab prId={prId} prBody={pr.body} />}
+        {tab === "overview" && (
+          <OverviewTab
+            prId={prId}
+            prBody={pr.body}
+            repoFullName={repoFullName}
+            headSha={pr.head_sha}
+            // A CHANGED file is in the diff, so it reveals in the Files-changed tab.
+            // (Blast-radius CALLERS are not in the diff and link out to GitHub instead
+            // — the card handles that itself.) One `setParams` call, never two: two
+            // sequential single-key writes clobber each other.
+            onOpenFile={(file) => setParams({ tab: "diff", file })}
+          />
+        )}
 
         {tab === "findings" && (
           <FindingsTab
@@ -204,6 +221,7 @@ export function PrDetailView({ repoId, number }: { repoId: string; number: strin
             // (?finding= → nonce → accordion → FindingCard.expand+scroll) does
             // the rest. No reload, no new mechanism.
             onOpenFinding={(id) => setParams({ tab: "findings", finding: id })}
+            targetFile={targetFile}
             canComment={pr.status === "open"}
           />
         )}

@@ -166,6 +166,7 @@ function mockApi(over: Partial<ApiPort> = {}): ApiPort {
     listRuns: vi.fn(async () => [runSummary()]),
     listReviews: vi.fn(async () => [summaryRecord(), reviewRecord()]),
     listConventions: vi.fn(async () => []),
+    getBlastRadius: vi.fn(async () => ({ changed_symbols: [], downstream: [], summary: '', degraded: false, reason: null })),
     ...over,
   };
 }

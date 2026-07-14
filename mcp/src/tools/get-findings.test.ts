@@ -179,6 +179,7 @@ function mockApi(over: Partial<ApiPort> = {}): ApiPort {
     // Newest-first, exactly as the API returns them: summary, newest review, older review.
     listReviews: vi.fn(async () => [summary(), review(), olderReview()]),
     listConventions: vi.fn(async () => []),
+    getBlastRadius: vi.fn(async () => ({ changed_symbols: [], downstream: [], summary: '', degraded: false, reason: null })),
     ...over,
   } as unknown as ApiPort;
 }

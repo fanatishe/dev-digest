@@ -42,12 +42,30 @@ touch the pipeline internals:
 - `getUnresolvedReferences(repoId, …)` → phantom-symbol detection (used by L06).
 - `getConventionSamples(repoId)` → top-ranked files for convention extraction (L02).
 
-In the starter, only `getRepoMap` / `getFileRank` / `getCallerSignatures` are
-wired — into `modules/reviews/run-executor.ts`, which adds the repo map and a
-high-blast-radius note to the prompt. Toggled by `REPO_INTEL_ENABLED` (global)
-and a per-agent `repo_intel` flag.
+`getRepoMap` / `getFileRank` / `getCallerSignatures` are wired into
+`modules/reviews/run-executor.ts`, which adds the repo map and a high-blast-radius
+note to the prompt. `getBlastRadius` is wired into **`GET /pulls/:id/blast-radius`**
+(`modules/pulls/routes.ts`, L04) — the route lives with the other PR-scoped reads,
+not here, because it is keyed by a PR and follows the Smart Diff shape. All of it is
+toggled by `REPO_INTEL_ENABLED` (global) and a per-agent `repo_intel` flag.
+
+**`getBlastRadius` reads the graph in REVERSE.** `file_edges` is stored importer →
+imported (`from_file` imports `to_file`), but "if I change this file, who breaks?" is
+the *opposite* question — so `blast-graph.ts` inverts the edge set and expands
+`to_file → from_file` up to `BFS_DEPTH` hops out from each changed file. Walking it
+the natural way answers "what does this file import?", which is never affected by the
+change, and is the single easiest way to get this backwards. (`file_edges_repo_to_idx`
+is keyed `(repo_id, to_file)` precisely because this is the direction reads go.)
+
+Callers are capped **per changed symbol**, not globally: a flat cap over the whole
+list starves whole symbols of their callers, and "no downstream callers" is a claim a
+reviewer acts on — it must never be an artifact of a truncation.
 
 ## Routes
 
 - `GET /repos/:id/index-state` — index status (drives the **Indexed** badge).
 - `POST /repos/:id/resync` — enqueue a re-index.
+
+The blast-radius read is **not** here — it is `GET /pulls/:id/blast-radius`, in
+`modules/pulls/routes.ts` (it is PR-scoped, and reads `pr_files` through
+`container.reviewRepo`).

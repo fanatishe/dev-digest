@@ -1,26 +1,46 @@
 /* OverviewTab — the PR's "what is this change about" tab: the derived Intent card
-   (left) beside the Blast-radius slot (right, not built yet), then the PR description.
-   This is the container half of the split: it owns the data hooks; IntentCard is
-   presentational. */
+   (left) beside the Blast-radius card (right), then the PR description. This is the
+   container half of the split: it owns the data hooks; both cards are presentational.
+
+   Note the cost asymmetry between the two. Intent is a MODEL call, and is only ever
+   computed on demand. Blast radius is a read of the index built at clone time — free
+   and fast — so it is fetched automatically on every visit. */
 "use client";
 
 import React from "react";
-import { useTranslations } from "next-intl";
-import { Card, SectionLabel } from "@devdigest/ui";
+import { SectionLabel } from "@devdigest/ui";
 import { IntentCard } from "../IntentCard";
+import { BlastRadiusCard } from "../BlastRadiusCard";
 import { useComputeIntent, useIntent } from "@/lib/hooks/intent";
+import { useBlastRadius, usePrHistory } from "@/lib/hooks/blast";
 import { s } from "./styles";
 
 interface OverviewTabProps {
   /** The PR row's uuid (resolved from the route's `number` by PrDetailView). */
   prId: string | null;
   prBody: string | null | undefined;
+  /** `owner/name` — for the blast card's GitHub deep links. */
+  repoFullName: string | null;
+  /** The PR's head sha — pins those links' line numbers to the code we indexed. */
+  headSha: string | null;
+  /** Reveal a CHANGED file in the Files-changed tab. */
+  onOpenFile: (file: string) => void;
 }
 
-export function OverviewTab({ prId, prBody }: OverviewTabProps) {
-  const t = useTranslations("brief");
+export function OverviewTab({
+  prId,
+  prBody,
+  repoFullName,
+  headSha,
+  onOpenFile,
+}: OverviewTabProps) {
   const { data: intent, isLoading } = useIntent(prId);
   const compute = useComputeIntent(prId);
+
+  const { data: blast, isLoading: blastLoading } = useBlastRadius(prId);
+  // History degrades independently of the blast radius: a repo whose clone is gone
+  // still has an index to read, and an empty prior-PR list is not an error.
+  const { data: history } = usePrHistory(prId);
 
   return (
     <>
@@ -31,11 +51,14 @@ export function OverviewTab({ prId, prBody }: OverviewTabProps) {
           computing={compute.isPending}
           onRecompute={() => compute.mutate()}
         />
-        {/* Blast radius is not built yet — the slot keeps the 2-col grid honest. */}
-        <Card>
-          <SectionLabel icon="Boxes">{t("block.blast")}</SectionLabel>
-          <div style={s.placeholder}>{t("blast.empty")}</div>
-        </Card>
+        <BlastRadiusCard
+          blast={blast ?? null}
+          history={history?.history ?? []}
+          loading={blastLoading}
+          repoFullName={repoFullName}
+          headSha={headSha}
+          onOpenFile={onOpenFile}
+        />
       </div>
 
       {prBody && (

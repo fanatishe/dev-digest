@@ -103,6 +103,18 @@ describe('AI contracts parse fixtures', () => {
         summary: 's',
       }),
     ).not.toThrow();
+    // `degraded`/`reason` are OPTIONAL (pre-existing fixtures must keep parsing)
+    // but must SURVIVE the parse — the whole point of putting them in the schema
+    // is that the zod serializer drops anything it doesn't declare.
+    expect(
+      BlastRadius.parse({
+        changed_symbols: [],
+        downstream: [],
+        summary: 'index not built',
+        degraded: true,
+        reason: 'no_data',
+      }),
+    ).toMatchObject({ degraded: true, reason: 'no_data' });
     expect(() =>
       Risks.parse({
         risks: [{ kind: 'security', title: 't', explanation: 'e', severity: 'high', file_refs: [] }],

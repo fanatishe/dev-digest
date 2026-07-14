@@ -13,7 +13,10 @@
 import type {
   Agent,
   ApiErrorBody,
+  BlastCaller,
+  BlastRadius,
   ConventionCandidate,
+  DownstreamImpact,
   FindingRecord,
   PrMeta,
   Repo,
@@ -27,7 +30,10 @@ import type {
 export type {
   Agent,
   ApiErrorBody,
+  BlastCaller,
+  BlastRadius,
   ConventionCandidate,
+  DownstreamImpact,
   FindingRecord,
   PrMeta,
   Repo,
@@ -38,7 +44,14 @@ export type {
   Verdict,
 };
 
-import type { AgentSummary, ConciseFinding, ConventionSummary, FullFinding } from './schemas.js';
+import type {
+  AgentSummary,
+  BlastImpactSummary,
+  BlastSymbolSummary,
+  ConciseFinding,
+  ConventionSummary,
+  FullFinding,
+} from './schemas.js';
 
 /** A PR that exists locally: `PrMeta.id` is `nullish` in the contract, resolved here. */
 export type SyncedPr = PrMeta & { id: string };
@@ -93,4 +106,26 @@ export interface ConventionsResult {
 export interface AgentsResult {
   agents: AgentSummary[];
   total: number;
+}
+
+/**
+ * Result of `get_blast_radius` (§5.5) — a PROJECTION of the API's `BlastRadius`, not
+ * the record itself. `downstream` is capped and its callers are capped again inside
+ * each entry, because a hot symbol in a large repo has hundreds of call sites and the
+ * model does not need them all to answer "what could this break?".
+ *
+ * `degraded` is surfaced rather than swallowed: an unindexed repo produces an EMPTY
+ * blast radius, which reads exactly like "nothing is affected" — the most dangerous
+ * thing this tool could imply. When it is set, `next` says how to fix it.
+ */
+export interface BlastRadiusResult {
+  repo: string;
+  pr: number;
+  summary: string;
+  changed_symbols: BlastSymbolSummary[];
+  downstream: BlastImpactSummary[];
+  endpoints_affected: string[];
+  crons_affected: string[];
+  degraded: boolean;
+  next: string | null;
 }

@@ -16,9 +16,9 @@ Every registration below is `server.registerTool(name, config, handler)` in
   chat start and they are how the model *chooses between* tools — they are as
   load-bearing as the code. Do not reword them without re-reading §5.0.
 - **`outputSchema` is a raw shape too**, and every tool that declares one returns
-  `structuredContent` **plus** one markdown `content` block. `get_blast_radius` is the
-  one tool with **no** `outputSchema`: declaring one would oblige it to produce a
-  `structuredContent` it does not have.
+  `structuredContent` **plus** one markdown `content` block. Since L04 wired
+  `get_blast_radius`, **all five tools declare one** — it was previously the sole
+  exception, because a stub cannot produce a `structuredContent` to match.
 
 Shared argument fragments live in `src/schemas.ts`:
 
@@ -182,53 +182,50 @@ blob).
 model call and is deliberately **not** exposed. This server has one write tool, and one
 only.
 
-## 5. `get_blast_radius` — TRUE STUB
+## 5. `get_blast_radius` — WIRED (was a stub until L04)
 
 ```ts
 name:        'get_blast_radius'
 title:       'Get the blast radius of a pull request'
-description: 'Which symbols a pull request changes and what downstream code calls them. NOT IMPLEMENTED YET — calling it returns instructions, not data.'
-inputSchema: { repo: repoArg, pr: prArg }        // the REAL schema — frozen now, unchanged when wired
+description: 'Which symbols a pull request changes, what downstream code calls them, and which HTTP endpoints and cron jobs those callers put at risk. Answers "what could this break?" — the question the diff itself cannot. Read-only and free: it reads a pre-built code index, and makes no model call.'
+inputSchema: { repo: repoArg, pr: prArg }        // UNCHANGED from the stub — the point
+outputSchema: { repo, pr, summary, changed_symbols, downstream, endpoints_affected,
+                crons_affected, degraded, next }
 annotations: { readOnlyHint: true, openWorldHint: true }
-// no outputSchema · no ApiPort · no service
-handler:     async () => ({ isError: true, content: [{ type: 'text', text: BLAST_RADIUS_STUB_MESSAGE }] })
 ```
 
-Cost: **free**, and it returns **no data** — by design. It is the course exercise.
+Cost: **free.** `GET /pulls/:id/blast-radius`, via `BlastService.getBlastRadius()`.
 
-**Why it cannot work today.** DevDigest computes a blast radius internally
-(`container.repoIntel.getBlastRadius(repoId, changedFiles)`,
-`server/src/modules/repo-intel/service.ts:220`) and the `BlastRadius` contract exists
-(`server/src/vendor/shared/contracts/brief.ts`). But `repo-intel/routes.ts` exposes only
-`GET /repos/:id/index-state` and `POST /repos/:id/resync` — **there is no HTTP route for
-the blast radius**, and this package reaches DevDigest over HTTP only. A separate process
-physically cannot reach the engine.
+**Why it is free.** The API reads a pre-built index — symbols, resolved references, the
+import graph, file rank and per-file endpoint/cron facts — all computed **once, when the
+repo was cloned**. Nothing is analyzed at request time and no model is called. That is the
+whole design: the reviewer's first question gets answered out of data already paid for.
 
-**Three deliberate absences:**
+**What the un-stubbing changed, and what it did not:**
 
-| Absent | Why |
-|---|---|
-| `outputSchema` | Declaring one obliges the handler to return a matching `structuredContent`, which a stub cannot produce. |
-| `ApiPort` / a service | It makes no call. A port it never uses would be a lie about the dependency graph. |
-| The server route | It is the exercise. Adding it here would delete the exercise. |
+| | Stub | Now |
+|---|---|---|
+| `name`, `inputSchema` | `{ repo, pr }` | **identical** — this is what freezing them bought |
+| `description` | "…NOT IMPLEMENTED YET" | rewritten (a frozen description that lies is worse than an edited one) |
+| `outputSchema` | absent — a stub has no `structuredContent` to match | declared |
+| `isError` | `true` | gone — a degraded index is a partial answer, not a failure |
+| `ApiPort` / service | none | `getBlastRadius(prId)` + `BlastService` |
 
-`isError: true` **is** correct here — unlike `run_agent_on_pr`'s timeout path, which is
-deliberately `isError: false`. There is no spend to protect and no retry that could cost
-money; the call is free, it fails identically every time, and the model should treat it
-as a failure and move on — to `get_findings`.
+The three steps the stub's own message promised were exactly the three that landed: a
+route in `server` (`modules/pulls/routes.ts` — **not** `repo-intel/routes.ts`, since it is
+PR-scoped and follows the Smart Diff precedent), `getBlastRadius()` on `ApiPort` +
+`http-client.ts`, and a service. `blast-radius.test.ts` still asserts the input-schema keys
+are exactly `['repo', 'pr']`.
 
-**To finish it** (the `inputSchema` above does not change, and neither do the name or the
-description):
+**`degraded` is the field that matters.** An unindexed repo produces an **empty** blast
+radius — which on the wire is indistinguishable from *"nothing is affected"*, the most
+dangerous thing this tool could imply. So `degraded: true` is surfaced explicitly and
+`next` says it out loud ("an empty result here means *unknown*, not *nothing is
+affected*") and names the fix (re-analyze / `POST /repos/:id/resync`).
 
-1. Add a route in `server` — `modules/repo-intel/routes.ts`, delegating to the existing
-   `repoIntel.getBlastRadius()` and serializing the existing `BlastRadius` contract.
-2. Add `getBlastRadius()` to `ApiPort` (`src/ports.ts`) and implement it in
-   `src/api/http-client.ts` — the only `fetch` in the package.
-3. Add a service method (application ring) and swap this handler's body for
-   `schema → one service call → format`, like every other tool.
-
-Only step 3 touches `src/tools/blast-radius.ts`. That is what freezing the input contract
-buys.
+**Projections** (§5.6): `downstream` is capped at 10 symbols and each symbol's callers at
+8, but every entry carries `total_callers` **before** the cap — a truncation a model cannot
+see is a truncation it will reason past. A caller is folded to `{ name, at: "file:line" }`.
 
 ---
 

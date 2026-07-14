@@ -11,6 +11,7 @@
  */
 import type {
   Agent,
+  BlastRadius,
   ConventionCandidate,
   PrMeta,
   Repo,
@@ -76,4 +77,18 @@ export interface ApiPort {
 
   /** `GET /repos/:id/conventions` */
   listConventions(repoId: string): Promise<ConventionCandidate[]>;
+
+  /**
+   * `GET /pulls/:id/blast-radius` — which symbols the PR changes and what downstream
+   * code calls them.
+   *
+   * FREE, and free by construction: the API reads a pre-built index (symbols, resolved
+   * references, the import graph, per-file endpoint facts) that was computed once when
+   * the repo was cloned. It makes no model call, so neither does this.
+   *
+   * NEVER throws on an unindexed repo — it answers with `degraded: true` and empty
+   * arrays. Treat an empty, degraded result as "we don't know", NOT as "nothing is
+   * affected".
+   */
+  getBlastRadius(prId: string): Promise<BlastRadius>;
 }

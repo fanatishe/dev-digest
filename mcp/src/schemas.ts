@@ -114,3 +114,35 @@ export const ConventionSummary = z.object({
   accepted: z.boolean(),
 });
 export type ConventionSummary = z.infer<typeof ConventionSummary>;
+
+// ---- Blast radius (§5.5) --------------------------------------------------------
+
+/** A symbol the PR changes. */
+export const BlastSymbolSummary = z.object({
+  name: z.string(),
+  file: z.string(),
+  kind: z.string(),
+});
+export type BlastSymbolSummary = z.infer<typeof BlastSymbolSummary>;
+
+/**
+ * `BlastCaller` folded to `"file:line"` — a caller is only ever USED as a place to
+ * go look, and `{name, file, line}` costs three keys per row to say what one string
+ * says. With callers capped at a few dozen, that difference is most of this
+ * response's token budget.
+ */
+export const BlastCallerSummary = z.object({
+  name: z.string(),
+  at: z.string().describe('file:line — where the call site is.'),
+});
+export type BlastCallerSummary = z.infer<typeof BlastCallerSummary>;
+
+/** One changed symbol and what it puts at risk. */
+export const BlastImpactSummary = z.object({
+  symbol: z.string(),
+  callers: z.array(BlastCallerSummary),
+  total_callers: z.number().int().describe('Before the cap — so a truncation is visible.'),
+  endpoints_affected: z.array(z.string()),
+  crons_affected: z.array(z.string()),
+});
+export type BlastImpactSummary = z.infer<typeof BlastImpactSummary>;

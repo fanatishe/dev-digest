@@ -23,6 +23,7 @@ import type { ApiPort } from '../ports.js';
 import type {
   Agent,
   ApiErrorBody,
+  BlastRadius,
   ConventionCandidate,
   PrMeta,
   Repo,
@@ -139,5 +140,13 @@ export class HttpApiClient implements ApiPort {
     return this.request<ConventionCandidate[]>(
       `/repos/${encodeURIComponent(repoId)}/conventions`,
     );
+  }
+
+  getBlastRadius(prId: string): Promise<BlastRadius> {
+    // CACHED: the answer is derived from an index that only changes on a re-clone or
+    // a resync, so within one tool session it is stable — and a model exploring a PR
+    // will ask for it more than once. Nothing here is billable, but the API still has
+    // to hit Postgres for it.
+    return this.cachedGet<BlastRadius>(`/pulls/${encodeURIComponent(prId)}/blast-radius`);
   }
 }

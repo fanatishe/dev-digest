@@ -1,0 +1,15 @@
+{
+  "name": "PR Overview tab renders the Blast radius card",
+  "description": "From PR #482, confirm the Overview tab renders the Blast radius card beside the Intent card, with its stat row and the 'Prior PRs touching these files' disclosure. Exercises GET /pulls/:id/blast-radius and GET /pulls/:id/history — both are pure reads of the repo-intel index and the clone's git log, so NO model call fires and the flow stays free. Deliberately asserts only what holds whether or not the hermetic stack has finished indexing: a repo with no index still renders the card (degraded, with a 'Partial index' badge) rather than a blank panel — that degradation is the behaviour under test as much as the happy path is. Read-only seeded data. Assumes a freshly-seeded DB (see e2e/README.md).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open the PR row" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail + blast/history queries settle" },
+    { "cmd": ["wait", "--text", "Blast radius"], "label": "the Blast radius card renders on the Overview tab" },
+    { "cmd": ["wait", "--text", "symbols"], "label": "the stat row renders (symbols · callers · endpoints · cron/jobs)" },
+    { "cmd": ["wait", "--text", "endpoints"], "label": "the endpoints stat renders" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Prior PRs touching these files"], "label": "expand the prior-PRs disclosure" }
+  ]
+}

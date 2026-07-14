@@ -87,7 +87,11 @@ export function FileCard({
     : 0;
 
   return (
-    <div style={s.fileCard}>
+    // `data-path` is the anchor the Blast-radius card scrolls to when you click a
+    // changed symbol (DiffTab's `?file=` reveal). It lives on FileCard, not on a
+    // viewer, so BOTH the flat DiffViewer and the SmartDiffViewer inherit it —
+    // otherwise the reveal would silently do nothing in whichever view you were in.
+    <div style={s.fileCard} data-path={file.path}>
       <div onClick={() => setOpen((o) => !o)} style={s.fileHeader}>
         <Icon.ChevronRight size={13} style={chevronFor(open)} />
         <Icon.FileText size={14} style={s.fileIcon} />

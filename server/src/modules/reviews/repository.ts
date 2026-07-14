@@ -45,6 +45,11 @@ export class ReviewRepository {
     return pullRepo.getPrFiles(this.db, prId);
   }
 
+  /** `pr_number → title` for a repo's imported PRs (enriches PR-history titles). */
+  getPrTitlesForRepo(workspaceId: string, repoId: string): Promise<Map<number, string>> {
+    return pullRepo.getPrTitlesForRepo(this.db, workspaceId, repoId);
+  }
+
   // ---- reviews + findings -------------------------------------------------
 
   insertReview(values: {

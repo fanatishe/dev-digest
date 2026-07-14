@@ -16,6 +16,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 import { HttpApiClient } from './api/http-client.js';
 import { loadConfig } from './config.js';
+import { BlastService } from './services/blast.service.js';
 import { CatalogService } from './services/catalog.service.js';
 import { ReviewService } from './services/review.service.js';
 import { registerBlastRadiusTool } from './tools/blast-radius.js';
@@ -34,6 +35,7 @@ async function main(): Promise<void> {
   const api = new HttpApiClient(config);
   const catalog = new CatalogService(api, config);
   const review = new ReviewService(api, config);
+  const blast = new BlastService(api, config);
 
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
@@ -44,7 +46,7 @@ async function main(): Promise<void> {
   registerRunAgentOnPrTool(server, review);
   registerGetFindingsTool(server, review);
   registerGetConventionsTool(server, catalog);
-  registerBlastRadiusTool(server);
+  registerBlastRadiusTool(server, blast);
 
   await server.connect(new StdioServerTransport());
 

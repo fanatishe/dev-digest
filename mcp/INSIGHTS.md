@@ -63,6 +63,23 @@ for the rubric.
 ## What Doesn't Work
 <!-- Dead ends and antipatterns. The most valuable section — don't skip it. -->
 
+- **NEVER let an empty result and an unknown result look the same on the wire.**
+  `get_blast_radius` on an unindexed repo returns `changed_symbols: []`, `downstream: []` —
+  which is byte-identical to "this PR breaks nothing", the single most dangerous thing this
+  surface could tell a reviewer. The API therefore carries `degraded` in the *contract*
+  (not beside it — `fastify-type-provider-zod` strips undeclared keys), the tool surfaces it
+  as a field, and `next` says it in words: *"an empty result here means unknown, not nothing
+  is affected"*. `errors.test.ts` asserts that sentence. **Any tool that can return an empty
+  set for two different reasons must distinguish them in-band** — a model cannot infer
+  "we didn't look" from "we found nothing". (2026-07-14, Blast Radius L04)
+
+- **Adding a method to `ApiPort` breaks every hand-rolled mock in the suite — that is the
+  port working, not a nuisance.** Six `mockApi()` factories across `resolve.test.ts`,
+  `catalog.service.test.ts` and four `tools/*.test.ts` each build a full `ApiPort` literal,
+  so a new method is six compile errors before a single test runs. Resist the urge to make
+  the port's new method optional to dodge them: the type error IS the mechanism that stops a
+  service from calling a method a mock never implemented. Fix the mocks. (2026-07-14)
+
 - **A doc that says "CI greps for it" is worthless if CI does not — and this package shipped
   exactly that lie for a day.** `AGENTS.md` and this file both claimed *"CI greps `mcp/src`
   for [`console.log`]"*. It did not: `.github/workflows/mcp.yml` ran `npm ci` → `tsc` →
@@ -96,6 +113,10 @@ for the rubric.
   **If a handler emits `structuredContent`, its registration MUST declare an
   `outputSchema`** (a raw shape, like `inputSchema`). Only the stub is exempt — it emits
   no structured content.
+  - **UPDATE (2026-07-14): the exemption is gone.** L04 wired `get_blast_radius`, so it
+    now emits `structuredContent` and declares an `outputSchema` like everything else.
+    **All five tools declare one; there is no longer an exempt tool.** The rule above is
+    unchanged and now has no exceptions.
 - **`.catch()` does not catch a SYNCHRONOUS throw.** `callApi` in `catalog.service.ts`
   was briefly rewritten from `try { await call() } catch` to `return call().catch(...)`.
   A `.catch()` handler only ever sees a *rejected promise*; a mock (or a real adapter)
@@ -143,6 +164,18 @@ for the rubric.
   is what makes finishing it a one-function change. The arguments are what every future
   caller and doc example depends on — and the part most likely to get "helpfully" tweaked
   while the tool does nothing.
+  - **CONFIRMED (2026-07-14): the bet paid off, and the ledger is worth knowing.** Wiring
+    it touched `ports.ts`, `http-client.ts`, a new `services/blast.service.ts`, and the
+    tool's handler body — and **`name` + `inputSchema` did not change**, so no host prompt,
+    doc or example needed rewriting. The schema-keys test predates the implementation and
+    survived it untouched. Two things DID have to change, and both are cases where the
+    stub's *reasoning* expired, not its contract: (1) `outputSchema` appeared (a stub had
+    no `structuredContent` to describe; a real tool does); (2) `isError: true` was **removed**
+    — it was right for a call that fails identically every time, but a **degraded index is
+    not a failure**, it is a real partial answer, and it must be reported in-band. (3) The
+    *description* also changed, deliberately breaking the "descriptions are frozen" rule:
+    it said "NOT IMPLEMENTED YET", and **a frozen description that lies is worse than an
+    edited one.** Freeze the *arguments*; let the prose track reality.
 - **A CI path filter is a type-graph fact, not a folder name.** `mcp.yml` filters on
   `server/src/vendor/shared/**` as well as `mcp/**`, because a tsconfig `paths` alias
   makes that directory a type-check *input* for a package that does not contain it (the
@@ -222,6 +255,18 @@ for the rubric.
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-14 (Blast Radius L04 — `get_blast_radius` is no longer a stub)
+The package's one deliberate stub is now wired: `GET /pulls/:id/blast-radius` landed in
+`server`, so `ApiPort.getBlastRadius()` + `services/blast.service.ts` + a real handler body
+followed. **`name` and `inputSchema` (`{repo, pr}`) did not change** — the whole point of
+having frozen them (see the CONFIRMED note under Codebase Patterns). `outputSchema` was
+added, `isError: true` removed, `blast-radius.constants.ts` and `NOT_IMPLEMENTED_BLAST`
+deleted, and `blastDegradedMessage()` took their place. Docs that described the route as
+missing (`docs/design.md` §6, `specs/tools.md` §5, the README table, and the "one tool with
+no outputSchema" claim) were all rewritten — **a stub's docs are a liability the moment it
+ships.** Suite: **111 tests**, arch + purity clean. Verified over real JSON-RPC with
+`./scripts/mcp.sh tools`.
 
 ### 2026-07-14
 - WP1–WP4 landed in parallel over disjoint files. Suite: **109 tests**, depcruise clean,

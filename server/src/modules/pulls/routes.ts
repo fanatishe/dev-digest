@@ -1,14 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { PrMeta, PrDetail, GitHubClient, PrReviewComment, FindingsCounts, FindingPreview, SmartDiff } from '@devdigest/shared';
-import { PrCommentInput, SmartDiffResponse } from '@devdigest/shared';
+import type { PrMeta, PrDetail, GitHubClient, PrReviewComment, FindingsCounts, FindingPreview, SmartDiff, BlastRadius, PrHistory, RepoRef } from '@devdigest/shared';
+import { PrCommentInput, SmartDiffResponse, BlastRadiusResponse, PrHistoryResponse } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
 import { buildSmartDiff } from './smart-diff.js';
+import { buildBlastRadius } from './blast.js';
+import { buildPrHistory, type HistoryInputCommit } from './history.js';
+import { HISTORY_MAX_COMMITS_PER_FILE, HISTORY_MAX_FILES } from './blast.constants.js';
 import { INTENT_ENQUEUE_LIMIT, IntentJobPayload } from './constants.js';
 // Constant-only cross-module import — the established precedent
 // (`repos/service.ts` imports INDEX_JOB_KIND from `repo-intel/constants.js`).
@@ -487,6 +490,98 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         .map((f) => ({ file: f.file, startLine: f.startLine }));
 
       return buildSmartDiff(files, findings);
+    },
+  );
+
+  // ---- Blast radius (Overview tab) ----------------------------------------
+  // "What could this change break?" — the question the diff cannot answer,
+  // because the answer lives in the code the diff does NOT show.
+  //
+  // ZERO model calls. Every fact is read from the repo-intel index that was
+  // built once, at clone time: symbols, resolved references, the import graph,
+  // file rank, and per-file endpoint/cron facts. This handler resolves the PR,
+  // hands its changed files to the `repoIntel` facade, and maps the result into
+  // the contract with a PURE builder. No analysis happens at request time.
+  app.get(
+    '/pulls/:id/blast-radius',
+    { schema: { params: IdParams, response: { 200: BlastRadiusResponse } } },
+    async (req): Promise<BlastRadius> => {
+      const { workspaceId } = await getContext(container, req);
+      // Workspace-scoped: a PR id from another workspace must 404, not leak the
+      // shape of someone else's codebase. `getPrFiles` takes a bare prId, so
+      // this lookup is what enforces it (same posture as smart-diff, above).
+      const pr = await container.reviewRepo.getPull(workspaceId, req.params.id);
+      if (!pr) throw new NotFoundError('Pull request not found');
+
+      const files = await container.reviewRepo.getPrFiles(pr.id);
+      const paths = files.map((f) => f.path);
+
+      // The facade NEVER throws: an unindexed repo, a missing clone or an empty
+      // file list all come back as a valid `BlastResult` tagged `degraded`. The
+      // route must not undo that — a degraded index is a badge on the card, not
+      // a 500 and not an empty panel that reads as "nothing is affected".
+      const result = await container.repoIntel.getBlastRadius(pr.repoId, paths);
+      return buildBlastRadius(result);
+    },
+  );
+
+  // ---- Prior PRs touching these files (Blast card) -------------------------
+  // Read from the CLONE, not from GitHub and not from a table: a squash-merged
+  // PR leaves `(#482)` on the commit subject, so `git log -- <file>` yields the
+  // number, title, author and merge date for free. Also zero model calls — the
+  // per-PR note is derived from the file overlap, not written by an LLM.
+  app.get(
+    '/pulls/:id/history',
+    { schema: { params: IdParams, response: { 200: PrHistoryResponse } } },
+    async (req): Promise<PrHistory> => {
+      const { workspaceId } = await getContext(container, req);
+      const pr = await container.reviewRepo.getPull(workspaceId, req.params.id);
+      if (!pr) throw new NotFoundError('Pull request not found');
+
+      const files = await container.reviewRepo.getPrFiles(pr.id);
+      const paths = files.map((f) => f.path);
+      const repo = await container.reviewRepo.getRepo(pr.repoId);
+      if (!repo || paths.length === 0) return { history: [] };
+
+      const ref: RepoRef = { owner: repo.owner, name: repo.name };
+
+      // Both flags here are load-bearing, and BOTH were learned the hard way:
+      //
+      //  · `fullHistory` — a PATH-FILTERED `git log` applies history simplification and
+      //    SILENTLY OMITS merge commits. Without it, a repo that MERGES its PRs (rather
+      //    than squashing them) produces a log with no `Merge pull request #N` subject
+      //    in it anywhere, and this route returns an empty history for every PR, forever.
+      //  · `maxCount` — bounds the git process itself. An unbounded `git log -- <file>`
+      //    walks a file's entire history; a 60-file PR would fire 60 of them on a render.
+      //
+      // The other half of this fix is upstream: the import clones with `CLONE_DEPTH = 1`,
+      // so the repo-intel index job now runs `git fetch --deepen` — otherwise there is no
+      // history in the clone to read in the first place.
+      const commits: HistoryInputCommit[] = [];
+      for (const path of paths.slice(0, HISTORY_MAX_FILES)) {
+        try {
+          const log = await container.git.log(ref, path, {
+            maxCount: HISTORY_MAX_COMMITS_PER_FILE,
+            fullHistory: true,
+          });
+          for (const c of log) commits.push({ ...c, file: path });
+        } catch {
+          // No clone, a path git doesn't know, a clone still shallow: degrade this file
+          // to "no history", never fail the request.
+          continue;
+        }
+      }
+
+      // Enrichment (best-effort): a MERGE commit's subject is only its branch name, and
+      // its body — where the real title lives — is sometimes empty. For those, prefer
+      // the PR's GitHub title if we happen to have imported it. A prior PR we never
+      // imported simply isn't in the map, and the branch-name fallback still applies.
+      const titleByNumber = await container.reviewRepo.getPrTitlesForRepo(
+        workspaceId,
+        pr.repoId,
+      );
+
+      return buildPrHistory(commits, paths, pr.number, titleByNumber);
     },
   );
 

@@ -7,6 +7,19 @@ for the rubric.
 ## What Works
 <!-- Approaches, patterns, and solutions that proved effective. problem → what to do. -->
 
+- **A poll that STOPS itself: drive `refetchInterval` off the response payload, not a
+  caller-owned flag.** The Blast card's server returns `refreshing: true` while a
+  background clone/index resync is in flight. `hooks/blast.ts` polls with the FUNCTION
+  form — `refetchInterval: (query) => query.state.data?.refreshing ? 1500 : false`
+  (TanStack Query v5) — so the query keeps refetching purely because its own last
+  response said so, and stops the instant one comes back `refreshing: false`. This is
+  strictly simpler than the older `useRepoIntelStatus(repoId, poll)` pattern
+  (`hooks/repo-intel.ts`), where the CALLER owns a `poll` boolean and must itself detect
+  completion by watching `lastIndexedSha`/`updatedAt` advance. When the server can tell
+  you "still working / done" in the payload, let the hook self-terminate — no component
+  state, no effect, no completion-watcher. Pairs with a server staleness signal that is
+  itself self-terminating (see `server/INSIGHTS.md`, 2026-07-15). (2026-07-15)
+
 - **Hover popover in a table MUST portal to `document.body` with `position:fixed`.**
   `vendor/ui/primitives/FindingsPopover.tsx` is the module's first real popover
   (everything else used native `title`). An absolutely-positioned popup gets clipped
@@ -45,7 +58,30 @@ for the rubric.
   is invisible under `color:transparent` — render the placeholder in the `<pre>` layer
   when `value===""` instead. Drop-in for `<Textarea>` (same value/onChange/rows). (2026-07-11)
 
+- **A new i18n namespace needs ZERO registration.** `src/i18n/request.ts` `readdirSync`s
+  `messages/<locale>/` and merges every `*.json` into `{ [basename]: … }`. Dropping in
+  `messages/en/blast.json` makes `useTranslations("blast")` work immediately — no import,
+  no barrel, no config edit. (That is also why `blast.json` could sit fully written and
+  completely unused for two lessons without anything complaining.) (2026-07-14)
+
 ## What Doesn't Work
+
+- **DO NOT deep-link a blast-radius CALLER into the Files-changed tab — its file is not in
+  the diff.** This is the whole point of a blast radius: callers live in files the PR does
+  *not* touch, so the diff viewer structurally cannot render them and the reveal lands on
+  nothing. Navigation in `BlastRadiusCard` is therefore **asymmetric, deliberately**:
+  a **changed symbol** is in the diff → `setParams({tab:"diff", file})`; a **caller** is
+  not → `githubBlobUrl(repoFullName, headSha, file, line)` (the head sha pins the line
+  numbers to the code we indexed). Wiring both to the same handler looks tidier and is
+  silently broken for half the rows. (2026-07-14, Blast Radius L04)
+
+- **A `?file=` reveal effect must depend on `showSmart`, not just on the file.** `DiffTab`
+  mounts one of TWO viewers (`SmartDiffViewer` / flat `DiffViewer`) and the smart-diff query
+  resolves *after* the tab first renders. An effect keyed on `[targetFile]` alone runs once
+  against the flat viewer's DOM, then never again when the smart viewer swaps in — so the
+  scroll silently targets a node that no longer exists. Key it `[targetFile, showSmart]`.
+  The `data-path` anchor lives on **`FileCard`** (the shared `components/diff-viewer/` ring),
+  not on either viewer, so both inherit it. (2026-07-14)
 
 - **Duplicating a constant to dodge a forbidden import buys time, not safety — and the
   copies diverge faster than you think.** `components/diff-viewer/` is the SHARED ring, so
@@ -239,6 +275,23 @@ for the rubric.
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-14 (Blast Radius L04)
+Built the Blast-radius card into the Overview grid's long-standing placeholder slot —
+stat row · tree · SVG graph · "Prior PRs touching these files". `messages/en/blast.json`
+already existed, fully written and unused (tree/graph/cron strings included), and needed no
+registration to start working. **The card's most important state is the DEGRADED one:** an
+unindexed repo returns an *empty* blast radius, which reads exactly like "nothing is
+affected" — so a degraded response renders a warning saying **"unknown", never a blank
+card**, and the RTL test asserts that copy rather than the happy path. The graph is
+hand-rolled SVG on purpose: the topology is always the same three columns, so a layout
+library would be tens of KB to compute three `x` coordinates — and it would move nodes
+between renders, which is the opposite of what someone scanning "what does this touch"
+wants. Stat counts are DISTINCT endpoints/crons, not the per-symbol sum (two symbols
+reaching one endpoint is one endpoint at risk). Made the stat row `role="list"` +
+`role="listitem"` with an `aria-label` per stat — a screen reader was otherwise announcing
+the number and the word as two unrelated fragments, and the RTL query for it was walking
+DOM siblings, which is a test smell that means the markup is wrong.
 
 ### 2026-07-13 (Smart Diff L03)
 Built `SmartDiffViewer` (grouped core/wiring/boilerplate, boilerplate collapsed, intent

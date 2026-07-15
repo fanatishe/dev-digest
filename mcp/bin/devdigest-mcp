@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Launcher for the DevDigest MCP server, spawned by an MCP host (Claude Code) over stdio.
+#
+# Why this exists rather than `npx -y tsx mcp/src/index.ts` straight in `.mcp.json`:
+#
+#   1. `npx -y` FETCHES FROM THE NPM REGISTRY AT SPAWN TIME. It needs a writable npm cache
+#      and a network round-trip on every launch. When either is unavailable — or when the
+#      fetch simply outruns the host's ~30s MCP startup timeout — the host reports a bare
+#      "failed to connect" with no clue why. `tsx` is already a devDependency right here;
+#      fetching it again is pure downside.
+#   2. The host does NOT guarantee our working directory. This script resolves its own
+#      location, so every path below is absolute and cwd is irrelevant.
+#
+# STDOUT IS THE JSON-RPC FRAME — every diagnostic in this file goes to stderr, or it
+# corrupts the protocol and the host dies with an opaque parse error.
+
+set -euo pipefail
+
+MCP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# A fresh clone has no node_modules, which would otherwise fail as an inscrutable
+# ERR_MODULE_NOT_FOUND on the SDK import. Install once, quietly, on stderr.
+if [ ! -x "$MCP_DIR/node_modules/.bin/tsx" ]; then
+  echo "[devdigest-mcp] first run — installing deps in $MCP_DIR …" >&2
+  (cd "$MCP_DIR" && npm install --silent --no-audit --no-fund >&2)
+fi
+
+exec "$MCP_DIR/node_modules/.bin/tsx" "$MCP_DIR/src/index.ts"

@@ -64,4 +64,29 @@ describe('routes (no DB)', () => {
     expect(res.json().error.code).toBe('validation_error');
     await app.close();
   });
+
+  /**
+   * The Blast Radius routes are REGISTERED and schema-wired (L04).
+   *
+   * This runs without Docker, and that is the point: a non-uuid `:id` is rejected by
+   * the params schema BEFORE the handler runs, so no database is touched. A 422 proves
+   * the route exists and its contract is attached; a 404 would mean the route was never
+   * registered at all — the exact failure the MCP tool was stubbed around for months.
+   * (Behaviour on a REAL id is covered in `blast-radius.it.test.ts`, which needs Postgres.)
+   */
+  it('GET /pulls/:id/blast-radius is registered and schema-first (422, not 404)', async () => {
+    const app = await buildApp({ config });
+    const res = await app.inject({ method: 'GET', url: '/pulls/not-a-uuid/blast-radius' });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('validation_error');
+    await app.close();
+  });
+
+  it('GET /pulls/:id/history is registered and schema-first (422, not 404)', async () => {
+    const app = await buildApp({ config });
+    const res = await app.inject({ method: 'GET', url: '/pulls/not-a-uuid/history' });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('validation_error');
+    await app.close();
+  });
 });

@@ -48,6 +48,20 @@ export const INDEX_SOFT_BUDGET_MS = 110_000;
 // --- [T3] Graph / hotness / repo-map ---------------------------------------
 export const BFS_DEPTH = 2;
 export const HOTNESS_WINDOW_DAYS = 180;
+
+/**
+ * How many commits of history the index job pulls down (`git fetch --deepen`).
+ *
+ * The IMPORT clones with `CLONE_DEPTH = 1` (repos/constants.ts) to stay fast — leaving a
+ * clone with a single commit, in which `git log -- <file>` returns nothing for every
+ * file. Anything that reads the past has to deepen first. This runs inside the async
+ * index job, so the import is still fast; the history just lands a moment later.
+ *
+ * 250 is chosen to cover a meaningful "who touched this recently" window on an active
+ * repo without pulling years of objects. It is a CEILING, not a requirement: a repo with
+ * fewer commits simply fetches all of them.
+ */
+export const HISTORY_DEPTH = 250;
 export const DEFAULT_REPO_MAP_TOKEN_BUDGET = 1500;
 /** Signatures are trimmed to this many chars in the parse phase (cache stability). */
 export const MAX_SIGNATURE_CHARS = 120;

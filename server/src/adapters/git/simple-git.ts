@@ -116,14 +116,42 @@ export class SimpleGitClient implements GitClient {
     return parseBlamePorcelain(raw);
   }
 
-  async log(repo: RepoRef, path?: string): Promise<GitCommit[]> {
-    const log = await this.git(repo).log(path ? { file: path } : undefined);
+  async log(
+    repo: RepoRef,
+    path?: string,
+    opts?: { maxCount?: number; fullHistory?: boolean },
+  ): Promise<GitCommit[]> {
+    // ARRAY form, not simple-git's options OBJECT.
+    //
+    // `log({ file, '--full-history': null })` SILENTLY DROPS the flag — verified: it
+    // returns the history-simplified log (no merge commits) exactly as if the flag were
+    // never passed, with no error. simple-git's object DSL only understands its own known
+    // keys and builds `-- <file>` itself; an extra flag lands in the wrong place. The
+    // array form puts the args where git expects them, before the `--` separator.
+    const args: string[] = [];
+    // Without `--full-history`, a PATH-FILTERED log applies git's history simplification
+    // and OMITS merge commits — so `Merge pull request #N` never appears and a
+    // merge-based repo looks like it has no PR history at all.
+    if (opts?.fullHistory) args.push('--full-history');
+    if (opts?.maxCount) args.push(`--max-count=${opts.maxCount}`);
+    if (path) args.push('--', path);
+
+    const log = await this.git(repo).log(args.length > 0 ? args : undefined);
     return log.all.map((c) => ({
       sha: c.hash,
       message: c.message,
+      // Merge commits keep the PR title here, not in the subject. See GitCommit.body.
+      body: c.body ?? '',
       author: c.author_name,
       date: c.date,
     }));
+  }
+
+  async deepen(repo: RepoRef, depth: number): Promise<void> {
+    // `--deepen` GROWS a shallow clone by fetching more history. On a repo that is
+    // already complete it is a silent no-op (verified: exit 0, no output), so this
+    // needs no "is it shallow?" check and is safe to call on every index run.
+    await this.git(repo).fetch(['--deepen', String(depth)]);
   }
 
   async readFile(repo: RepoRef, path: string): Promise<string> {

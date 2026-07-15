@@ -28,8 +28,91 @@ for the rubric.
   the check was structurally incapable of seeing it. **Any file on the adopt-and-fix
   backlog needs a human read of its diff, not a green-vs-baseline count.** (2026-07-13)
 
+- **THE CLONE IS SHALLOW (`CLONE_DEPTH = 1`) — ANY feature that reads git history gets
+  NOTHING, and it looks like data, not like a bug.** `repos/constants.ts:9` clones with
+  `--depth 1`, so the clone holds exactly ONE commit and `git log -- <file>` returns no
+  history for *any* file, in *any* repo. This has now bitten twice: it is why
+  `file_rank.hotness` is hard-coded to 0 (`pipeline/rank.ts:5` says so outright), and it
+  is why `GET /pulls/:id/history` shipped returning an empty list for every PR — a silent
+  wrong answer, because "no prior PR touched these files" is a perfectly plausible result.
+  **Fix, if you need history: `container.git.deepen(ref, HISTORY_DEPTH)`** — it is now
+  called by both `pipeline/full.ts` and `pipeline/incremental.ts`, so it runs in the async
+  index job (the import stays fast) and a "Re-analyze" repairs an already-imported repo.
+  `git fetch --deepen` is idempotent and a silent no-op on a complete repo. **Before
+  building on `git.log`/`git.blame`, ask what the clone actually contains.** (2026-07-14)
+
+- **`git log -- <path>` OMITS MERGE COMMITS, and simple-git will silently drop the flag
+  that fixes it.** Two compounding traps, both silent:
+  (1) A path-filtered `git log` applies git's *history simplification* and hides the merge
+  commit, showing the merged branch's own commits instead — so on a repo that MERGES its
+  PRs (`Merge pull request #5 from …`, which is what DevDigest itself does) there is no
+  `#N` anywhere in the log to recover. `--full-history` is required.
+  (2) **`simpleGit().log({ file, '--full-history': null })` DOES NOT APPLY THE FLAG.** It
+  returns the simplified log, with no error, exactly as if you had not passed it — the
+  object DSL only understands its own keys and builds the `-- <file>` separator itself.
+  **Use the ARRAY form:** `log(['--full-history', '--max-count=50', '--', path])`. Verified
+  live: object form → 3 commits (no merge), array form → 4 (merge included).
+  Also: a merge commit's SUBJECT is `Merge pull request #N from owner/branch` and the PR's
+  real TITLE is in the **body** — hence `GitCommit.body`. (2026-07-14)
+
+- **A PR number recovered from `git log` is NOT this repo's namespace — on a FORK it is
+  usually upstream's.** A fork inherits upstream's entire history (its `Merge pull
+  request #N` / `(#N)` commits included), and fork PR numbering restarts at #1 — so
+  log-`#5` and this-repo-`#5` are typically two unrelated PRs. Three things break if the
+  number is trusted bare, and all three shipped that way in PR history before a user
+  noticed: a `/pull/N` link opens the fork's own unrelated PR; title enrichment stamps
+  the fork's title onto upstream's PR; self-exclusion-by-number hides a real upstream
+  entry. **Rule: corroborate before any namespace-sensitive use** — a merge commit names
+  its head ref (`from owner/branch` → match `pull_requests.branch`), a squash subject IS
+  the title at merge time (→ exact-match `pull_requests.title`); when corroboration
+  fails, fall back to the merge COMMIT sha, the only identifier both repos agree on
+  (`PrHistoryItem.merge_sha` / `number_confirmed`, `pulls/history.ts corroborates()`).
+  There is no way to distinguish the cases from the clone alone, and the `repos` table
+  stores no fork/parent info. (2026-07-14)
+
+- **A cap applied to a FLATTENED list silently starves whole groups.**
+  `repo-intel/service.ts` capped blast-radius callers with
+  `callers.slice(0, MAX_CALLERS_PER_SYMBOL)` over the concatenated list of every changed
+  symbol's callers. `MAX_CALLERS_PER_SYMBOL` is the name — the code is a GLOBAL cap. With
+  5 changed symbols × 10 callers and a limit of 20, the top-ranked two symbols consume the
+  budget and the other three render with **zero** callers, i.e. "nothing downstream depends
+  on this" — a claim a reviewer acts on, produced by a truncation. Group first, cap each
+  group (`capCallersPerSymbol`, `blast-cap.test.ts` pins it). **Whenever a limit is named
+  `*_PER_X`, check that the code actually partitions by X before slicing.** (2026-07-14)
+
+- **An implemented facade method with ZERO consumers is not a working feature, and its
+  "degraded contract" test proves nothing about its output.**
+  `repoIntel.getBlastRadius()` was fully written, had a persistent path AND a ripgrep
+  fallback, and was covered by `repo-intel-facade-degraded.test.ts` — which only asserts it
+  does not *throw*. Nothing had ever read its result, so a global-vs-per-symbol cap bug and
+  a completely absent import-graph traversal both sat there undetected. The degraded test is
+  a liveness check, not a correctness one. **Before building on an unused facade method,
+  read its body — do not treat "it exists and is tested" as evidence it is right.**
+  (2026-07-14, Blast Radius L04)
+
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
+
+- **`file_edges` is stored importer → imported, and BLAST RADIUS MUST WALK IT BACKWARDS.**
+  A row is `from_file` imports `to_file`. "What does this file depend on?" follows the edge
+  forwards (that is what `getCriticalPaths` does). **"If I change this file, who breaks?" is
+  the opposite question** — it is the file's *dependents*, so you expand
+  `to_file → from_file`. Walking it the natural direction returns the changed file's own
+  dependencies, which are never affected by the change: a plausible-looking, entirely wrong
+  answer. The index already anticipates this — `file_edges_repo_to_idx` is keyed
+  `(repo_id, to_file)` precisely because reads go that way. `repo-intel/blast-graph.ts`
+  (`reachableDependents`) is the one place that does it; its test asserts the direction
+  explicitly, because "it returned some files" is not evidence it went the right way.
+  (2026-07-14)
+
+- **A PR-scoped read-only route belongs in `modules/pulls/routes.ts` + a PURE builder — not
+  in a new module, and not in the module that owns the data.** Blast Radius reads
+  `repo-intel`'s index, but its route is `GET /pulls/:id/blast-radius` in `pulls/`, because
+  it is keyed by a PR and needs `pr_files`. This is exactly the Smart Diff shape
+  (`getContext` → workspace-scoped `reviewRepo.getPull` → 404 → facade reads → pure builder
+  → contract), and it is now the third feature to use it. The module that owns the *engine*
+  does not have to own the *route*; the facade (`container.repoIntel`) is what makes that
+  legal. (2026-07-14)
 
 - **`reviewer-core` already returns more than `run-executor` persists.** The review
   `outcome` carries `costUsd` (real OpenRouter `usage.cost`, with an estimate
@@ -129,6 +212,23 @@ for the rubric.
 ## Tool & Library Notes
 <!-- Quirks and gotchas of dependencies/tooling. -->
 
+- **You can prove a route is REGISTERED without Docker: inject a non-uuid id and expect
+  422, not 404.** `buildApp()` needs no live Postgres (postgres-js connects lazily) and
+  the Zod `params` schema rejects a bad id **before** the handler runs — so no DB is
+  touched. A 422 proves the route exists and its contract is attached; a 404 means it was
+  never registered. This runs in the UNIT lane (`test/routes-smoke.test.ts`), which matters
+  because Docker has now been absent for three consecutive sessions and every `*.it.test.ts`
+  self-skips. **When the integration lane can't run, this is the cheapest real evidence the
+  wiring landed** — not a substitute for it, but far better than a green typecheck.
+  (2026-07-14)
+
+- **`GitClient.log()` is UNBOUNDED.** `adapters/git/simple-git.ts` calls
+  `git.log({ file })` with no `maxCount`, so it walks a file's entire history and
+  materialises every commit. Fine for one file; a request that loops over a PR's changed
+  files fans out into N unbounded git processes on the render path. `GET /pulls/:id/history`
+  caps both axes (`HISTORY_MAX_FILES`, `HISTORY_MAX_COMMITS_PER_FILE` in
+  `pulls/blast.constants.ts`). (2026-07-14)
+
 - **`server/package.json` is NOT actually `skip-worktree` in every clone — CHECK, don't
   trust the doc.** Both the root `CLAUDE.md` and `server/CLAUDE.md` assert your edits to it
   "won't show in `git status`". In this clone `git ls-files -v server/package.json` returns
@@ -198,6 +298,74 @@ for the rubric.
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-15 (Blast card was stale — no freshness check, no poller)
+Reported: recently-merged PRs never appeared in the Overview "Prior PRs" / Blast Radius
+cards, even with a token. Root cause was NOT a bug in either card — it was that both read
+the **local clone / repo-intel index**, which is a SNAPSHOT: it only advances at import or
+on a manual `POST /repos/:id/resync`, and there is **no poller and no freshness check**
+anywhere (confirmed by grep — no cron, no `last_polled_at` sweep). The PR *list* and PR
+*detail* are live from GitHub, so the two data paths silently diverge: list correct, cards
+stale. **Whenever a feature reads the clone (git log / repo-intel), ask not only "what does
+the clone contain" (the shallow-clone trap, below) but "HOW OLD is it" — the clone is only
+as fresh as the last index, and nothing refreshes it on its own.** Fix (Option A): both
+card routes now call an in-file `maybeResync()` that enqueues a background `RESYNC_JOB_KIND`
+when the index is stale, serves the current (valid) data immediately, and reports a new
+`refreshing` contract flag. Staleness signal is **network-free**:
+`max(pull_requests.updated_at) > repo_index_state.updatedAt` (`pullRepo.getLatestPrActivity`
++ pure `pulls/freshness.ts::shouldResyncClone`) — `updated_at` is kept live by the list
+sync and a merge bumps it, so it fires exactly on "just merged" and self-terminates once the
+resync lands. Three deliberate choices: (1) `refreshing` is DISTINCT from `degraded`
+(valid-but-stale ≠ incomplete) and, like `degraded` before it, had to go into the Zod
+response schema or `fastify-type-provider-zod` strips it; (2) a **degraded / never-built**
+index is NOT resynced from the view — that needs a full index and has its own badge + manual
+button, and resync-on-view would risk a reindex storm; (3) deduped against in-flight resync
+jobs (`jobs.pendingPayloads`) and best-effort `enqueue` (try/catch) — a card READ must never
+500 for a background-refresh miss, same posture as the intent auto-fill. Docker still absent
+(4th session): `freshness.test.ts` (pure) + `contracts.test.ts` + the 422-not-404 smoke are
+the floor; the enqueue wiring is unexecuted by an integration test.
+
+### 2026-07-14 (Blast Radius L04)
+Built `GET /pulls/:id/blast-radius` + `GET /pulls/:id/history` — **zero model calls**; both
+read data already paid for (the repo-intel index built at clone time, and the clone's git
+log). Almost everything was pre-scaffolded and left **one wire short on purpose**: the
+engine (`repoIntel.getBlastRadius`), the `BlastRadius`/`PrHistory` contracts, the client's
+`blast.json`, and the Overview placeholder all existed; the MCP tool was a stub whose error
+message *named the missing route*. **But the pre-built engine had two real bugs, precisely
+because nothing consumed it** (see "an implemented facade method with zero consumers…"): a
+global-not-per-symbol caller cap, and no import-graph traversal at all (`file_edges` and
+`BFS_DEPTH=2` sat unused by blast). Both fixed; `getBlastRadius` had zero callers, so it
+was safe to change. **The contract needed one additive change** — `degraded`/`reason` on
+`BlastRadius` — for the reason this file already records: `fastify-type-provider-zod`
+silently strips any key the response schema doesn't declare, so a degraded flag bolted on
+beside it would never reach the client. That flag is load-bearing: an unindexed repo returns
+an EMPTY blast radius, which reads exactly like *"nothing is affected"*. PR-history `notes`
+are DERIVED from the file overlap (a squash-merge subject carries `(#482)`, so `git log`
+yields the PR number for free) rather than LLM-written — a paid, unfalsifiable sentence on a
+card whose whole value is that every line is checkable. Docker absent for the **third**
+session running: `blast-radius.it.test.ts` is written but UNEXECUTED; the 422-not-404
+smoke tests are what actually proved the routes registered.
+
+### 2026-07-14 (Blast Radius L04 — follow-up: "Prior PRs" was empty on every PR)
+Reported symptom: **every** PR showed 0 prior PRs. Not a data gap — **three** stacked bugs,
+each of which fails SILENTLY and each of which produces a *plausible* answer ("nothing
+touched these files"), which is why none of them announced themselves:
+1. **The clone is `--depth 1`.** One commit; `git log -- <file>` sees no history, ever.
+   Fixed with `git.deepen()` in the index job (both full + incremental, so "Re-analyze"
+   repairs existing repos). The repo ALREADY knew this — `rank.ts:5` documents the same
+   wall and abandoned `hotness` over it. I read `GitClient.log()` and never asked what the
+   clone contained.
+2. **`git log -- <path>` hides merge commits** (history simplification). DevDigest's own
+   repo merges rather than squashes, so there was no `#N` to find even with a deep clone.
+   Needs `--full-history`.
+3. **simple-git silently ignores `{'--full-history': null}`** in its options object. Only
+   the ARRAY form works. This one is nasty: the code *looks* correct and the flag just
+   evaporates.
+Verified by building a throwaway repo with both merge styles, shallow-cloning it, and
+running the REAL `SimpleGitClient` + `buildPrHistory` over it: **0 prior PRs → 2**, with
+the merge commit's real title recovered from the body. Lesson: for anything that reads git,
+a unit test with hand-written fixtures proves nothing about what `git` actually returns —
+drive the real adapter against a real repo.
 
 ### 2026-07-13 (Smart Diff L03 + Intent auto-fill)
 Built Smart Diff — `GET /pulls/:id/smart-diff` regroups the SAME diff by role

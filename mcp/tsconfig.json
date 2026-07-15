@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "moduleDetection": "force",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": false,
+    "sourceMap": true,
+    "noEmit": true,
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "paths": {
+      // TYPES ONLY. A value import from here would load a SECOND zod instance
+      // (server pins ^3.24, mcp pins ^3.25) and break `instanceof`.
+      "@devdigest/shared": ["../server/src/vendor/shared/index.ts"],
+      "@devdigest/shared/*": ["../server/src/vendor/shared/*"]
+
+      // Deliberately NO `"zod": ["./node_modules/zod"]` mapping (reviewer-core has
+      // one). It bypasses zod's package `exports`, so the SDK's `zod/v3` and
+      // `zod/v4/core` type subpaths degenerate and every registerTool() call explodes
+      // into `TS2589: Type instantiation is excessively deep` — a 20s typecheck that
+      // fails. mcp does not need the mapping: it imports @devdigest/shared as TYPES
+      // ONLY, so the two zod copies never meet.
+    }
+  },
+  "include": ["src/**/*.ts", "vitest.config.ts"]
+}

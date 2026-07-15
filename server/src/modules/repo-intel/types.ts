@@ -82,6 +82,16 @@ export interface BlastResult {
    * Present on the persistent (non-degraded) path; absent otherwise.
    */
   factsByFile?: Record<string, { endpoints: string[]; crons: string[] }>;
+  /**
+   * Per-CHANGED-FILE transitive dependents, up to `BFS_DEPTH` reverse import
+   * hops (`file_edges` walked `to_file → from_file`). This is what lets an
+   * endpoint two imports away from the diff be attributed to the symbol that
+   * caused it: `callers` alone only ever sees the ONE symbol-level hop.
+   *
+   * Present on the persistent path only — the ripgrep fallback has no import
+   * graph to walk.
+   */
+  dependentsByFile?: Record<string, string[]>;
   degraded?: boolean;
   reason?: DegradedReason;
 }

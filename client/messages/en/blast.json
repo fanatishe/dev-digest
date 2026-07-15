@@ -11,8 +11,31 @@
   },
   "callerCount": "{count} callers",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
+  "noCallersForSymbol": "No downstream callers.",
   "graph": {
     "empty": "No downstream callers to graph.",
-    "ariaLabel": "Blast radius graph"
+    "ariaLabel": "Blast radius graph",
+    "legendSymbol": "changed symbol",
+    "legendCaller": "callers",
+    "legendEndpoint": "endpoints affected"
+  },
+  "refreshing": "Updating…",
+  "openCaller": "Open {symbol} in {file} on GitHub",
+  "openSymbol": "Show {symbol} in the diff",
+  "expandSymbol": "Expand callers of {symbol}",
+  "degraded": {
+    "badge": "Partial index",
+    "no_data": "This repo has not been indexed yet, so the blast radius is incomplete — an empty result means “unknown”, not “nothing is affected”. Re-analyze the repo to build the index.",
+    "flag_off": "Code indexing is disabled (REPO_INTEL_ENABLED=false), so no blast radius can be computed.",
+    "index_partial": "The code index is only partial — the repo was too large, or indexing timed out — so some callers and endpoints are missing.",
+    "index_failed": "The last indexing run failed, so this blast radius may be incomplete. Re-analyze the repo to rebuild the index.",
+    "repo_too_large": "The repo exceeded the indexing limits, so only part of it was indexed and some callers are missing.",
+    "unknown": "The code index is incomplete, so some callers and endpoints may be missing."
+  },
+  "priorPrs": {
+    "title": "Prior PRs touching these files",
+    "empty": "No prior merged PRs touched the files this PR changes.",
+    "openPr": "Open pull request #{number} on GitHub",
+    "openCommit": "Open the merge commit of #{number} on GitHub"
   }
 }

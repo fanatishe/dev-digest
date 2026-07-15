@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, max } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { Intent } from '@devdigest/shared';
@@ -52,6 +52,61 @@ export async function getPrFiles(
   prId: string,
 ): Promise<(typeof t.prFiles.$inferSelect)[]> {
   return db.select().from(t.prFiles).where(eq(t.prFiles.prId, prId));
+}
+
+/**
+ * `pr_number → {title, branch}` for every PR of a repo that DevDigest has imported.
+ *
+ * Feeds PR-history corroboration: a PR number recovered from git log is NOT necessarily
+ * this repo's numbering (a fork inherits upstream's history, and fork numbering restarts
+ * at #1), so before the number is linked, self-excluded, or title-enriched, it is checked
+ * against OUR PR N's branch/title. Both fields are needed: a merge commit corroborates by
+ * branch, a squash commit by title.
+ *
+ * Workspace-scoped, like every read on the facade: the map is keyed by PR number, which
+ * is not unique across repos, so it is filtered to THIS repo within THIS workspace.
+ */
+export async function getPrRefsForRepo(
+  db: Db,
+  workspaceId: string,
+  repoId: string,
+): Promise<Map<number, { title: string; branch: string }>> {
+  const rows = await db
+    .select({
+      number: t.pullRequests.number,
+      title: t.pullRequests.title,
+      branch: t.pullRequests.branch,
+    })
+    .from(t.pullRequests)
+    .where(
+      and(eq(t.pullRequests.workspaceId, workspaceId), eq(t.pullRequests.repoId, repoId)),
+    );
+  return new Map(rows.map((r) => [r.number, { title: r.title, branch: r.branch }]));
+}
+
+/**
+ * The most recent GitHub activity across a repo's imported PRs (`max(updated_at)`),
+ * or null when the repo has no PRs (or none carry a timestamp).
+ *
+ * This is the staleness signal for the Blast card's background resync: `updated_at` is
+ * kept live-fresh by the PR-list sync (`pulls/routes.ts`), and a merge bumps it, so a
+ * value newer than the repo-intel index's `updatedAt` means the clone the index was built
+ * from is behind. It is network-free — the freshness check reads a column we already sync,
+ * never GitHub. Workspace-scoped like every read here (PR number is not unique across
+ * repos), and rows with a null `updated_at` are ignored by `max`.
+ */
+export async function getLatestPrActivity(
+  db: Db,
+  workspaceId: string,
+  repoId: string,
+): Promise<Date | null> {
+  const [row] = await db
+    .select({ latest: max(t.pullRequests.updatedAt) })
+    .from(t.pullRequests)
+    .where(
+      and(eq(t.pullRequests.workspaceId, workspaceId), eq(t.pullRequests.repoId, repoId)),
+    );
+  return row?.latest ?? null;
 }
 
 /**

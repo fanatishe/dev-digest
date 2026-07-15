@@ -15,6 +15,7 @@ aliases, not published modules):
 | `client/`        | `@devdigest/web`            | Next.js 15 web app (the studio)                       | 3000 |
 | `reviewer-core/` | `@devdigest/reviewer-core`  | Pure review engine: diff → prompt → LLM → findings    | —    |
 | `e2e/`           | `@devdigest/e2e`            | Deterministic browser e2e (agent-browser)             | —    |
+| `mcp/`           | `@devdigest/mcp`            | Local MCP server (stdio): the reviewer as agent tools | —    |
 | `server/src/vendor/shared` | `@devdigest/shared` | Zod contracts shared across every package             | —    |
 
 `repo-intel` (the codebase indexer that powers the **Indexed** badge and feeds
@@ -34,6 +35,11 @@ flowchart LR
     API --> PG
   end
 
+  HOST["MCP host<br/>Claude Code · Claude Desktop"]
+  MCP["mcp/<br/>MCP server · stdio"]
+  HOST -->|"JSON-RPC over stdio"| MCP
+  MCP -->|"REST — the same API the web app uses"| API
+
   CLONE["git clone (add repo)"] --> INDEX["repo-intel<br/>index symbols + import graph<br/>→ repo map"]
   API --> CLONE
   INDEX -->|"repo map = review context"| ENGINE
@@ -47,6 +53,7 @@ flowchart LR
   SHARED -.->|"one schema, every package"| WEB
   SHARED -.-> API
   SHARED -.-> ENGINE
+  SHARED -.->|"types only"| MCP
 ```
 
 The review flow end to end: **add a repo** → server clones it and `repo-intel`
@@ -61,7 +68,8 @@ Each package has its own README with deeper diagrams:
 [`client`](client/README.md) (UI route map) ·
 [`server`](server/README.md) (API map) ·
 [`reviewer-core`](reviewer-core/README.md) (review pipeline) ·
-[`e2e`](e2e/README.md).
+[`e2e`](e2e/README.md) ·
+[`mcp`](mcp/README.md) (the five tools, and how a host registers them).
 
 ## What works on day 1
 
@@ -113,6 +121,20 @@ Flags: `--no-seed` · `--no-client` · `--db-only` · `--help`.
 > Add your keys in `server/.env` (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`,
 > `GITHUB_TOKEN`) or via the Settings UI at runtime.
 
+**The MCP server is not part of this stack, but it is on by default.** `dev.sh` never starts
+it — the root `.mcp.json` registers it, and your Claude Code **host** spawns it over stdio
+(approve the trust prompt once). So the five reviewer tools are simply there in a session;
+all you have to run is the API above.
+
+```sh
+# turn it off — .claude/settings.local.json
+{ "disabledMcpjsonServers": ["devdigest"] }
+
+./scripts/mcp.sh {check|tools|call|inspect}   # or drive it with no host at all
+```
+
+See [`mcp/README.md`](mcp/README.md).
+
 ## Manual steps (what the script does)
 
 ```sh
@@ -143,6 +165,7 @@ path filter — full strategy in **[`TESTING.md`](TESTING.md)**.
 | server unit (hermetic) | `server-unit.yml` | no |
 | server integration (real Postgres) | `server-integration.yml` | yes |
 | reviewer-core (engine) | `reviewer-core.yml` | no |
+| mcp (tools + services, mock API port) | `mcp.yml` | no |
 | web e2e (agent-browser, real stack) | `e2e-web.yml` | yes |
 
 Server tests split by filename: `*.it.test.ts` are DB-backed (testcontainers

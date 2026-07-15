@@ -103,6 +103,29 @@ describe('AI contracts parse fixtures', () => {
         summary: 's',
       }),
     ).not.toThrow();
+    // `degraded`/`reason` are OPTIONAL (pre-existing fixtures must keep parsing)
+    // but must SURVIVE the parse — the whole point of putting them in the schema
+    // is that the zod serializer drops anything it doesn't declare.
+    expect(
+      BlastRadius.parse({
+        changed_symbols: [],
+        downstream: [],
+        summary: 'index not built',
+        degraded: true,
+        reason: 'no_data',
+      }),
+    ).toMatchObject({ degraded: true, reason: 'no_data' });
+    // `refreshing` (a background clone resync is in flight) is OPTIONAL but must SURVIVE
+    // the parse — the serializer strips undeclared keys, and the client badges "Updating…"
+    // on exactly this flag. Distinct from `degraded`: the served answer is still valid.
+    expect(
+      BlastRadius.parse({
+        changed_symbols: [],
+        downstream: [],
+        summary: 's',
+        refreshing: true,
+      }).refreshing,
+    ).toBe(true);
     expect(() =>
       Risks.parse({
         risks: [{ kind: 'security', title: 't', explanation: 'e', severity: 'high', file_refs: [] }],
@@ -122,6 +145,28 @@ describe('AI contracts parse fixtures', () => {
         ],
       }),
     ).not.toThrow();
+    // `merge_sha`/`number_confirmed` are OPTIONAL (old fixtures keep parsing) but must
+    // SURVIVE the parse — the response serializer drops any key the schema doesn't
+    // declare, and the client's fork-safe link logic branches on exactly these two.
+    expect(
+      PrHistory.parse({
+        history: [
+          {
+            pr_number: 5,
+            title: 't',
+            merged_at: '2026-03-18',
+            author: 'a',
+            files_overlap: [],
+            notes: 'n',
+            merge_sha: 'abc123',
+            number_confirmed: false,
+          },
+        ],
+      }).history[0],
+    ).toMatchObject({ merge_sha: 'abc123', number_confirmed: false });
+    // `refreshing` rides on the PrHistory envelope (same background-resync signal as
+    // BlastRadius) — optional, but must round-trip past the serializer.
+    expect(PrHistory.parse({ history: [], refreshing: true }).refreshing).toBe(true);
   });
 
   it('SmartDiff (data.jsx DIFF)', () => {

@@ -54,6 +54,7 @@ import {
 } from './constants.js';
 import { runFullIndex, type IndexPayload } from './pipeline/full.js';
 import { runIncremental } from './pipeline/incremental.js';
+import { reachableDependents } from './blast-graph.js';
 
 /**
  * GLOBALS allowlist — common JS/TS builtins + runtime that appear as bare
@@ -369,11 +370,30 @@ export class RepoIntelService implements RepoIntel {
         rank: c.rank,
       });
     }
-    callers.sort((a, b) => b.rank - a.rank);
 
-    // Precomputed facts per caller file (endpoints + crons), so consumers can
-    // attribute them to the changed symbol whose callers live in that file.
-    const facts = await this.repo.getFileFacts(repoId, callerFiles);
+    // Cap PER SYMBOL, not globally. A flat `.slice(0, 20)` over the whole list
+    // (what this used to do) keeps the top 20 callers by rank across every
+    // symbol — so a PR touching 5 symbols with 10 callers each would render some
+    // symbols with ZERO callers and no indication why. "No downstream callers"
+    // is a claim the reviewer acts on; it must not be an artifact of a cap.
+    const cappedCallers = capCallersPerSymbol(callers, MAX_CALLERS_PER_SYMBOL);
+
+    // Reverse import-graph walk: which files transitively DEPEND ON each changed
+    // file, up to BFS_DEPTH hops. `callers` only ever covers the one symbol-level
+    // hop; an endpoint two imports downstream is invisible without this.
+    const edges = await this.repo.getEdges(repoId);
+    const dependents = reachableDependents(edges, changedFiles, BFS_DEPTH);
+    const dependentsByFile: Record<string, string[]> = {};
+    const allDependents = new Set<string>();
+    for (const [seed, files] of dependents) {
+      dependentsByFile[seed] = files;
+      for (const f of files) allDependents.add(f);
+    }
+
+    // One facts query for caller files AND graph-reachable files — endpoints and
+    // crons are precomputed at index time, so this is a read, not an analysis.
+    const factFiles = [...new Set([...callerFiles, ...allDependents])];
+    const facts = await this.repo.getFileFacts(repoId, factFiles);
     const endpoints = new Set<string>();
     const factsByFile: Record<string, { endpoints: string[]; crons: string[] }> = {};
     for (const f of facts) {
@@ -383,9 +403,10 @@ export class RepoIntelService implements RepoIntel {
 
     return {
       changedSymbols,
-      callers: callers.slice(0, MAX_CALLERS_PER_SYMBOL),
+      callers: cappedCallers,
       impactedEndpoints: [...endpoints],
       factsByFile,
+      dependentsByFile,
       degraded: false,
     };
   }
@@ -742,6 +763,31 @@ const JUNK_PATH_PATTERNS = [
 function isJunkPath(path: string): boolean {
   const lower = path.toLowerCase();
   return JUNK_PATH_PATTERNS.some((p) => lower.includes(p));
+}
+
+/**
+ * Keep the top `limit` callers OF EACH changed symbol, by file rank descending.
+ *
+ * Exported for the test that pins the difference from a global cap: with 5
+ * symbols × 10 callers and a limit of 20, a global slice keeps 20 rows total and
+ * starves whole symbols; this keeps 10 for every one of them.
+ */
+export function capCallersPerSymbol(
+  callers: readonly BlastCallerRow[],
+  limit: number,
+): BlastCallerRow[] {
+  const bySymbol = new Map<string, BlastCallerRow[]>();
+  for (const c of callers) {
+    const arr = bySymbol.get(c.viaSymbol);
+    if (arr) arr.push(c);
+    else bySymbol.set(c.viaSymbol, [c]);
+  }
+  const out: BlastCallerRow[] = [];
+  for (const group of bySymbol.values()) {
+    group.sort((a, b) => b.rank - a.rank);
+    out.push(...group.slice(0, limit));
+  }
+  return out;
 }
 
 /** Enclosing top-level (bare-name) symbol for a line, from persistent rows. */

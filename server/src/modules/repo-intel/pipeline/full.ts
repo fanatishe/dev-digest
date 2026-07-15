@@ -30,6 +30,7 @@ import { parseSymbols, parseReferences, langForFile } from '../../../adapters/as
 import { extractEndpoints, extractCrons } from '../../../adapters/codeindex/extract.js';
 import {
   DEFAULT_REPO_MAP_TOKEN_BUDGET,
+  HISTORY_DEPTH,
   INDEX_SOFT_BUDGET_MS,
   INDEXER_VERSION,
   MAX_PARSE_MS_PER_FILE,
@@ -94,6 +95,20 @@ export async function runFullIndex(
   }
 
   const ref: RepoRef = { owner: repo.owner, name: repo.name };
+
+  // Deepen the clone BEFORE anything reads history ------------------------
+  // The import clones with `CLONE_DEPTH = 1` to stay fast, which leaves the clone with
+  // exactly ONE commit — so `git log -- <file>` returns nothing for every file, and any
+  // feature that reads the past silently shows "no history" instead of failing. That is
+  // not hypothetical: it is why `file_rank.hotness` was abandoned in v1 (see rank.ts),
+  // and it is what made `GET /pulls/:id/history` return an empty list for every PR.
+  //
+  // This is the right seam for it: the index job is already asynchronous and already
+  // runs right after the clone, so the fast import is untouched and history simply
+  // arrives a moment later. Best-effort by design — a repo whose remote refuses the
+  // deepen still gets a complete symbol/graph index, just no history.
+  const historyDeepen = await safeDeepen(container, ref);
+
   const currentSha = await safeCurrentHead(container, ref);
 
   // Walk + filter -------------------------------------------------------
@@ -260,6 +275,10 @@ export async function runFullIndex(
     ranked: rankCount,
     factsWritten: factsBuf.length,
     hotnessAvailable: false, // Option B — rank = pagerank only
+    // Did `git fetch --deepen` succeed? If this is false, the clone is still the
+    // `--depth 1` import clone, `git log` sees ONE commit, and PR history will be empty
+    // for every PR — which is otherwise indistinguishable from "no prior PRs exist".
+    historyDeepen,
     ...(graphFailed ? { graphFailed } : {}),
     softBudgetReached,
     parseDegraded,
@@ -303,6 +322,29 @@ async function safeCurrentHead(container: Container, ref: RepoRef): Promise<stri
     return await container.git.currentHead(ref);
   } catch {
     return '';
+  }
+}
+
+/**
+ * Grow the shallow clone's history. NEVER throws: an offline remote, a server that
+ * refuses `--deepen`, or a clone that is already complete must all leave the index run
+ * intact. History is an enrichment; symbols and the import graph are the job.
+ *
+ * The RESULT is returned and persisted into `repo_index_state.stats.historyDeepen`
+ * rather than swallowed. A silent best-effort step is exactly what made the empty PR
+ * history impossible to diagnose from the outside: "no prior PRs" and "we never fetched
+ * any history" looked identical. Now `GET /repos/:id/index-state` says which it was.
+ */
+async function safeDeepen(
+  container: Container,
+  ref: RepoRef,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await container.git.deepen(ref, HISTORY_DEPTH);
+    return { ok: true };
+  } catch (err) {
+    // Stays shallow → PR history degrades to empty. Not fatal, but now VISIBLE.
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

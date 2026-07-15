@@ -206,7 +206,17 @@ export interface BlameLine {
 
 export interface GitCommit {
   sha: string;
+  /** The SUBJECT line only (`%s`) — not the body. */
   message: string;
+  /**
+   * The commit body (everything after the subject), or `''`.
+   *
+   * Load-bearing for MERGE commits: GitHub writes the subject as
+   * `Merge pull request #5 from owner/branch` and puts the PR's actual TITLE in the
+   * body. Without this, a merge-commit-based repo's PR history can only ever show
+   * branch names.
+   */
+  body?: string;
   author: string;
   date: string;
 }
@@ -231,7 +241,36 @@ export interface GitClient {
    */
   diffNameOnly(repo: RepoRef, base: string, head: string): Promise<string[]>;
   blame(repo: RepoRef, path: string): Promise<BlameLine[]>;
-  log(repo: RepoRef, path?: string): Promise<GitCommit[]>;
+  /**
+   * Commit log, optionally for one path.
+   *
+   * `opts.fullHistory` maps to `git log --full-history`, and it is REQUIRED to see merge
+   * commits in a path-filtered log: by default git applies *history simplification* and
+   * drops the merge, showing the merged branch's own commits instead. So a repo that
+   * merges (rather than squashes) its PRs yields a log with no `Merge pull request #N`
+   * subject in it at all — and any attempt to recover PR numbers from it finds nothing.
+   *
+   * `opts.maxCount` bounds the git process itself. Without it `git log -- <file>` walks a
+   * file's ENTIRE history and materialises every commit.
+   */
+  log(
+    repo: RepoRef,
+    path?: string,
+    opts?: { maxCount?: number; fullHistory?: boolean },
+  ): Promise<GitCommit[]>;
+  /**
+   * Grow a SHALLOW clone's history to (at least) `depth` commits — `git fetch --deepen`.
+   *
+   * We clone with `CLONE_DEPTH = 1` to keep imports fast, which means the clone has
+   * exactly ONE commit and `log()` can return **no history at all, for any file**. Any
+   * feature that reads the past (PR history; the `file_rank.hotness` churn signal, which
+   * was abandoned in v1 for precisely this reason — see `pipeline/rank.ts`) must deepen
+   * first or it will silently return nothing and look like "there is no history here".
+   *
+   * Idempotent and safe: a no-op on an already-complete repo. Best-effort — callers
+   * treat a failure as "history stays shallow", never as a hard error.
+   */
+  deepen(repo: RepoRef, depth: number): Promise<void>;
   readFile(repo: RepoRef, path: string): Promise<string>;
   clonePathFor(repo: RepoRef): string;
 }

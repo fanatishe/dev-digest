@@ -23,6 +23,7 @@ import { parseSymbols, parseReferences, langForFile } from '../../../adapters/as
 import { extractEndpoints, extractCrons } from '../../../adapters/codeindex/extract.js';
 import {
   DEFAULT_REPO_MAP_TOKEN_BUDGET,
+  HISTORY_DEPTH,
   INDEXER_VERSION,
   MAX_PARSE_MS_PER_FILE,
   SUPPORTED_EXT,
@@ -80,6 +81,19 @@ export async function runIncremental(
   }
 
   const ref: RepoRef = { owner: repo.owner, name: repo.name };
+
+  // Deepen here too, not just in runFullIndex. A repo indexed BEFORE the deepen landed
+  // still has its original `--depth 1` clone, and an incremental refresh never touches
+  // runFullIndex — so without this, an existing repo's PR history would stay empty until
+  // something forced a full reindex. `git fetch --deepen` is idempotent and a no-op once
+  // the clone is deep, so hitting "Re-analyze" (→ resync → runIncremental) is all it
+  // takes to repair an already-imported repo. Best-effort: never fails the refresh.
+  try {
+    await container.git.deepen(ref, HISTORY_DEPTH);
+  } catch {
+    // Stays shallow → PR history degrades to empty. Not fatal.
+  }
+
   let currentSha: string;
   try {
     currentSha = await container.git.currentHead(ref);

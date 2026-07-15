@@ -17,6 +17,16 @@ export function githubPrUrl(repoFullName: string, number: number): string {
   return `${HOST}/${repoFullName}/pull/${number}`;
 }
 
+/**
+ * A commit page — the NAMESPACE-FREE deep link. Unlike a PR number, a sha means the
+ * same thing on a fork and on its upstream (GitHub serves inherited commits on both),
+ * so this is the link used when a PR number could not be corroborated as this repo's
+ * own (see `PrHistoryItem.number_confirmed`).
+ */
+export function githubCommitUrl(repoFullName: string, sha: string): string {
+  return `${HOST}/${repoFullName}/commit/${sha}`;
+}
+
 /** A convention's cited evidence, split back into the parts a blob URL needs. */
 export interface EvidenceRef {
   file: string;

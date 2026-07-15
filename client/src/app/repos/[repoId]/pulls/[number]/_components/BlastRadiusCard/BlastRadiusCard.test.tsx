@@ -44,6 +44,21 @@ const HISTORY: PrHistoryItem[] = [
     author: "marisa.koch",
     files_overlap: ["src/middleware/ratelimit.ts"],
     notes: "Touched 1 of the 1 file this PR changes: src/middleware/ratelimit.ts",
+    merge_sha: "aaa111",
+    number_confirmed: true, // this repo's own PR → /pull/N is safe
+  },
+  {
+    // A fork's inherited UPSTREAM PR: same numbering column, different namespace.
+    // The server could not corroborate #12 as this repo's own, so the card must link
+    // the merge COMMIT — /pull/12 here would open an unrelated PR.
+    pr_number: 12,
+    title: "Introduce public API namespace",
+    merged_at: "2026-01-10T10:00:00Z",
+    author: "deepak.r",
+    files_overlap: ["src/middleware/ratelimit.ts"],
+    notes: "Touched 1 of the 1 file this PR changes: src/middleware/ratelimit.ts",
+    merge_sha: "bbb222",
+    number_confirmed: false,
   },
 ];
 
@@ -167,17 +182,55 @@ describe("BlastRadiusCard — degraded", () => {
   });
 });
 
+describe("BlastRadiusCard — refreshing", () => {
+  it('badges "Updating…" when a background resync is in flight', () => {
+    // The data shown is still valid — the badge only signals a fresher version is coming,
+    // so the card still renders its stats, NOT a degraded note.
+    renderCard({ blast: { ...BLAST, refreshing: true } });
+    expect(screen.getByText(/updating/i)).toBeInTheDocument();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: "2 symbols" })).toBeInTheDocument();
+  });
+
+  it("shows no updating badge when nothing is refreshing", () => {
+    renderCard();
+    expect(screen.queryByText(/updating/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("BlastRadiusCard — prior PRs", () => {
   it("expands to show the prior PR, its overlap note, and a link to GitHub", () => {
     renderCard();
     fireEvent.click(screen.getByRole("button", { name: /prior prs touching these files/i }));
 
     expect(screen.getByText("Add ioredis client for session cache")).toBeInTheDocument();
-    expect(screen.getByText(/Touched 1 of the 1 file this PR changes/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Touched 1 of the 1 file this PR changes/)).not.toHaveLength(0);
     expect(screen.getByRole("link", { name: /open pull request #356/i })).toHaveAttribute(
       "href",
       `https://github.com/${REPO}/pull/356`,
     );
+  });
+
+  it("links an UNCONFIRMED number to its merge commit, never to /pull/N", () => {
+    // The fork trap. #12 came from inherited upstream history; on this repo /pull/12 is
+    // some other PR entirely. The sha is the only identifier both repos agree on.
+    renderCard();
+    fireEvent.click(screen.getByRole("button", { name: /prior prs touching these files/i }));
+
+    const link = screen.getByRole("link", { name: /open the merge commit of #12/i });
+    expect(link).toHaveAttribute("href", `https://github.com/${REPO}/commit/bbb222`);
+    // And no /pull/12 link exists anywhere on the card.
+    expect(screen.queryByRole("link", { name: /open pull request #12/i })).not.toBeInTheDocument();
+  });
+
+  it("renders an unconfirmed number as plain text when there is no sha either", () => {
+    renderCard({
+      history: [{ ...HISTORY[1]!, merge_sha: null, number_confirmed: false }],
+    });
+    fireEvent.click(screen.getByRole("button", { name: /prior prs touching these files/i }));
+
+    expect(screen.getByText("#12")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /#12/i })).not.toBeInTheDocument();
   });
 
   it("says so explicitly when no prior PR touched these files", () => {

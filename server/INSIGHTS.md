@@ -55,6 +55,21 @@ for the rubric.
   Also: a merge commit's SUBJECT is `Merge pull request #N from owner/branch` and the PR's
   real TITLE is in the **body** — hence `GitCommit.body`. (2026-07-14)
 
+- **A PR number recovered from `git log` is NOT this repo's namespace — on a FORK it is
+  usually upstream's.** A fork inherits upstream's entire history (its `Merge pull
+  request #N` / `(#N)` commits included), and fork PR numbering restarts at #1 — so
+  log-`#5` and this-repo-`#5` are typically two unrelated PRs. Three things break if the
+  number is trusted bare, and all three shipped that way in PR history before a user
+  noticed: a `/pull/N` link opens the fork's own unrelated PR; title enrichment stamps
+  the fork's title onto upstream's PR; self-exclusion-by-number hides a real upstream
+  entry. **Rule: corroborate before any namespace-sensitive use** — a merge commit names
+  its head ref (`from owner/branch` → match `pull_requests.branch`), a squash subject IS
+  the title at merge time (→ exact-match `pull_requests.title`); when corroboration
+  fails, fall back to the merge COMMIT sha, the only identifier both repos agree on
+  (`PrHistoryItem.merge_sha` / `number_confirmed`, `pulls/history.ts corroborates()`).
+  There is no way to distinguish the cases from the clone alone, and the `repos` table
+  stores no fork/parent info. (2026-07-14)
+
 - **A cap applied to a FLATTENED list silently starves whole groups.**
   `repo-intel/service.ts` capped blast-radius callers with
   `callers.slice(0, MAX_CALLERS_PER_SYMBOL)` over the concatenated list of every changed
@@ -283,6 +298,32 @@ for the rubric.
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-15 (Blast card was stale — no freshness check, no poller)
+Reported: recently-merged PRs never appeared in the Overview "Prior PRs" / Blast Radius
+cards, even with a token. Root cause was NOT a bug in either card — it was that both read
+the **local clone / repo-intel index**, which is a SNAPSHOT: it only advances at import or
+on a manual `POST /repos/:id/resync`, and there is **no poller and no freshness check**
+anywhere (confirmed by grep — no cron, no `last_polled_at` sweep). The PR *list* and PR
+*detail* are live from GitHub, so the two data paths silently diverge: list correct, cards
+stale. **Whenever a feature reads the clone (git log / repo-intel), ask not only "what does
+the clone contain" (the shallow-clone trap, below) but "HOW OLD is it" — the clone is only
+as fresh as the last index, and nothing refreshes it on its own.** Fix (Option A): both
+card routes now call an in-file `maybeResync()` that enqueues a background `RESYNC_JOB_KIND`
+when the index is stale, serves the current (valid) data immediately, and reports a new
+`refreshing` contract flag. Staleness signal is **network-free**:
+`max(pull_requests.updated_at) > repo_index_state.updatedAt` (`pullRepo.getLatestPrActivity`
++ pure `pulls/freshness.ts::shouldResyncClone`) — `updated_at` is kept live by the list
+sync and a merge bumps it, so it fires exactly on "just merged" and self-terminates once the
+resync lands. Three deliberate choices: (1) `refreshing` is DISTINCT from `degraded`
+(valid-but-stale ≠ incomplete) and, like `degraded` before it, had to go into the Zod
+response schema or `fastify-type-provider-zod` strips it; (2) a **degraded / never-built**
+index is NOT resynced from the view — that needs a full index and has its own badge + manual
+button, and resync-on-view would risk a reindex storm; (3) deduped against in-flight resync
+jobs (`jobs.pendingPayloads`) and best-effort `enqueue` (try/catch) — a card READ must never
+500 for a background-refresh miss, same posture as the intent auto-fill. Docker still absent
+(4th session): `freshness.test.ts` (pure) + `contracts.test.ts` + the 422-not-404 smoke are
+the floor; the enqueue wiring is unexecuted by an integration test.
 
 ### 2026-07-14 (Blast Radius L04)
 Built `GET /pulls/:id/blast-radius` + `GET /pulls/:id/history` — **zero model calls**; both

@@ -66,6 +66,14 @@ export const BlastRadius = z.object({
   degraded: z.boolean().nullish(),
   /** Why it is degraded — `no_data` | `flag_off` | `index_partial` | … */
   reason: z.string().nullish(),
+  /**
+   * A background clone/index resync was kicked off because this repo has PR activity
+   * newer than the last index (see `pulls/freshness.ts`). The data served is still
+   * VALID — this only signals a fresher version is on its way, so the client can badge
+   * "Updating…" and refetch shortly. Distinct from `degraded`, which means the answer
+   * itself is incomplete. Must live in the contract, or the zod serializer strips it.
+   */
+  refreshing: z.boolean().nullish(),
 });
 export type BlastRadius = z.infer<typeof BlastRadius>;
 
@@ -95,11 +103,29 @@ export const PrHistoryItem = z.object({
   author: z.string(),
   files_overlap: z.array(z.string()),
   notes: z.string(),
+  /**
+   * The merge/squash commit the entry was recovered from. This is the only
+   * NAMESPACE-FREE identifier we have: on a FORK, `pr_number` refers to the repo the
+   * merge happened in (usually upstream), whose numbering restarts on the fork — so a
+   * `/pull/N` link built from it can open an unrelated PR. A commit link never can.
+   */
+  merge_sha: z.string().nullish(),
+  /**
+   * True only when `pr_number` was corroborated as THIS repo's own numbering — the
+   * number exists among the repo's imported PRs AND its branch/title matches what the
+   * merge commit records. The client renders a `/pull/N` link only then; otherwise it
+   * links the commit. Never trust a bare number from git log: on a fork it is
+   * upstream's.
+   */
+  number_confirmed: z.boolean().nullish(),
 });
 export type PrHistoryItem = z.infer<typeof PrHistoryItem>;
 
 export const PrHistory = z.object({
   history: z.array(PrHistoryItem),
+  /** See `BlastRadius.refreshing` — a background clone resync is in flight because the
+   *  repo has PR activity newer than the last index; the served history is still valid. */
+  refreshing: z.boolean().nullish(),
 });
 export type PrHistory = z.infer<typeof PrHistory>;
 

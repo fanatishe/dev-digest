@@ -11,6 +11,7 @@ import { deriveReviewStatus } from './status.js';
 import { buildSmartDiff } from './smart-diff.js';
 import { buildBlastRadius } from './blast.js';
 import { buildPrHistory, type HistoryInputCommit } from './history.js';
+import { shouldResyncClone } from './freshness.js';
 import { HISTORY_MAX_COMMITS_PER_FILE, HISTORY_MAX_FILES } from './blast.constants.js';
 import { INTENT_ENQUEUE_LIMIT, IntentJobPayload } from './constants.js';
 // Constant-only cross-module import — the established precedent
@@ -19,6 +20,10 @@ import { INTENT_ENQUEUE_LIMIT, IntentJobPayload } from './constants.js';
 // imported here, and NO table owned by that module is queried from this file:
 // `pr_intent` is reached ONLY through the `container.reviewRepo` facade.
 import { INTENT_JOB_KIND } from '../reviews/constants.js';
+// Same tier-1 sanctioned constant-only import: RESYNC_JOB_KIND is a domain-ring literal
+// owned by repo-intel (precedent above). Enqueued to refresh a stale Blast card; no
+// repo-intel table is touched here — freshness reads go through the container facades.
+import { RESYNC_JOB_KIND } from '../repo-intel/constants.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -493,6 +498,46 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     },
   );
 
+  // ---- Blast-card freshness: background resync when the index is stale -----
+  // The Blast Radius + Prior-PRs cards read the CLONE / repo-intel index, which only
+  // advances at import or on a manual resync — there is NO poller. So after new PRs are
+  // merged the two cards go stale while the PR list (live from GitHub) stays correct.
+  //
+  // When a repo has PR activity newer than its last index, kick off a BACKGROUND resync so
+  // the next view is fresh, and report `refreshing` so the client can badge "Updating…".
+  // The served data is still VALID — this only signals a fresher version is on its way; it
+  // is NOT the degraded flag. Two cheap facade reads on the render path; the resync runs
+  // as its own job. Deduped against in-flight resyncs and best-effort: a card READ must
+  // never 500 because a background job could not be queued (same posture as intent
+  // auto-fill in the list handler above).
+  async function maybeResync(workspaceId: string, repoId: string): Promise<boolean> {
+    const [indexState, latestPrActivityAt] = await Promise.all([
+      container.repoIntel.getIndexState(repoId),
+      container.reviewRepo.getLatestPrActivity(workspaceId, repoId),
+    ]);
+    const stale = shouldResyncClone({
+      indexUpdatedAt: indexState.updatedAt,
+      indexDegraded: indexState.degraded === true,
+      latestPrActivityAt,
+    });
+    if (!stale) return false;
+
+    // Don't stack resyncs: if one is already queued/running for this repo a refresh is
+    // already in flight — report it, enqueue nothing.
+    const inFlight = await container.jobs.pendingPayloads(workspaceId, RESYNC_JOB_KIND);
+    if (inFlight.some((p) => (p as { repoId?: unknown }).repoId === repoId)) return true;
+
+    try {
+      await container.jobs.enqueue(workspaceId, RESYNC_JOB_KIND, { repoId });
+      return true;
+    } catch (err) {
+      // `jobs.enqueue` THROWS when no handler is registered for the kind. Serve the
+      // (valid) stale data rather than fail the card read.
+      app.log.warn({ err, repoId }, 'Blast-card background resync enqueue skipped');
+      return false;
+    }
+  }
+
   // ---- Blast radius (Overview tab) ----------------------------------------
   // "What could this change break?" — the question the diff cannot answer,
   // because the answer lives in the code the diff does NOT show.
@@ -521,7 +566,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       // route must not undo that — a degraded index is a badge on the card, not
       // a 500 and not an empty panel that reads as "nothing is affected".
       const result = await container.repoIntel.getBlastRadius(pr.repoId, paths);
-      return buildBlastRadius(result);
+      // Refresh a stale clone/index in the background; serve the current (valid) result now.
+      const refreshing = await maybeResync(workspaceId, pr.repoId);
+      return { ...buildBlastRadius(result), refreshing };
     },
   );
 
@@ -541,7 +588,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const files = await container.reviewRepo.getPrFiles(pr.id);
       const paths = files.map((f) => f.path);
       const repo = await container.reviewRepo.getRepo(pr.repoId);
-      if (!repo || paths.length === 0) return { history: [] };
+      if (!repo || paths.length === 0) return { history: [], refreshing: false };
 
       const ref: RepoRef = { owner: repo.owner, name: repo.name };
 
@@ -572,16 +619,23 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         }
       }
 
-      // Enrichment (best-effort): a MERGE commit's subject is only its branch name, and
-      // its body — where the real title lives — is sometimes empty. For those, prefer
-      // the PR's GitHub title if we happen to have imported it. A prior PR we never
-      // imported simply isn't in the map, and the branch-name fallback still applies.
-      const titleByNumber = await container.reviewRepo.getPrTitlesForRepo(
-        workspaceId,
-        pr.repoId,
-      );
+      // Imported-PR refs feed CORROBORATION, not blind enrichment: a PR number in git
+      // log is not necessarily this repo's numbering (a fork inherits upstream history,
+      // whose numbers collide with the fork's own). Only a number whose branch/title
+      // matches our imported PR N is treated as ours — for the /pull/N link, for
+      // self-exclusion, and for lending a title to an empty-bodied merge commit.
+      const importedPrs = await container.reviewRepo.getPrRefsForRepo(workspaceId, pr.repoId);
 
-      return buildPrHistory(commits, paths, pr.number, titleByNumber);
+      // Same background-refresh signal as the blast route: the log we just read is only as
+      // fresh as the last index, so kick off a resync when the repo has moved on since.
+      const refreshing = await maybeResync(workspaceId, pr.repoId);
+      return {
+        ...buildPrHistory(commits, paths, {
+          currentPr: { number: pr.number, title: pr.title, branch: pr.branch },
+          importedPrs,
+        }),
+        refreshing,
+      };
     },
   );
 

@@ -47,12 +47,21 @@ export function BlastRadiusCard({
 
   // Degraded is derived from the response, never mirrored into state.
   const degraded = blast?.degraded === true;
+  // A background clone/index resync is in flight (the repo moved on since the last index).
+  // The data shown is still valid — this is a subtle "a fresher version is coming" hint,
+  // NOT the degraded warning. Derived from the response, never mirrored into state.
+  const refreshing = blast?.refreshing === true;
 
   const header = (
     <SectionLabel
       icon="Boxes"
       right={
         <div style={s.headerRight}>
+          {refreshing && (
+            <Badge icon="RefreshCw" color="var(--accent-text)" bg="var(--accent-bg)">
+              {t("refreshing")}
+            </Badge>
+          )}
           {degraded && (
             <Badge icon="AlertTriangle" color="var(--warn)" bg="var(--warn-bg)">
               {t("degraded.badge")}

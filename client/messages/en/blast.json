@@ -19,6 +19,7 @@
     "legendCaller": "callers",
     "legendEndpoint": "endpoints affected"
   },
+  "refreshing": "Updating…",
   "openCaller": "Open {symbol} in {file} on GitHub",
   "openSymbol": "Show {symbol} in the diff",
   "expandSymbol": "Expand callers of {symbol}",
@@ -34,6 +35,7 @@
   "priorPrs": {
     "title": "Prior PRs touching these files",
     "empty": "No prior merged PRs touched the files this PR changes.",
-    "openPr": "Open pull request #{number} on GitHub"
+    "openPr": "Open pull request #{number} on GitHub",
+    "openCommit": "Open the merge commit of #{number} on GitHub"
   }
 }

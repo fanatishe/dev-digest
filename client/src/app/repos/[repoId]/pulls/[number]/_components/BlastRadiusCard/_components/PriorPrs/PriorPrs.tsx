@@ -10,7 +10,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon } from "@devdigest/ui";
 import type { PrHistoryItem } from "@devdigest/shared";
-import { githubPrUrl } from "@/lib/github-urls";
+import { githubCommitUrl, githubPrUrl } from "@/lib/github-urls";
 import { s } from "../../styles";
 
 interface PriorPrsProps {
@@ -48,13 +48,28 @@ export function PriorPrs({ history, repoFullName }: PriorPrsProps) {
               {history.map((item) => (
                 <li key={item.pr_number} style={s.prItem}>
                   <div style={s.prHead}>
-                    {repoFullName ? (
+                    {/* The number is only a safe /pull/N link when the server CONFIRMED
+                        it belongs to this repo's own numbering. On a fork, the inherited
+                        history carries UPSTREAM's PR numbers — and /pull/5 here would
+                        open the fork's own, unrelated #5. Unconfirmed numbers link the
+                        merge COMMIT instead: a sha means the same thing on both repos. */}
+                    {repoFullName && item.number_confirmed ? (
                       <a
                         style={s.prNumber}
                         href={githubPrUrl(repoFullName, item.pr_number)}
                         target="_blank"
                         rel="noreferrer noopener"
                         aria-label={t("priorPrs.openPr", { number: item.pr_number })}
+                      >
+                        #{item.pr_number}
+                      </a>
+                    ) : repoFullName && item.merge_sha ? (
+                      <a
+                        style={s.prNumber}
+                        href={githubCommitUrl(repoFullName, item.merge_sha)}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        aria-label={t("priorPrs.openCommit", { number: item.pr_number })}
                       >
                         #{item.pr_number}
                       </a>

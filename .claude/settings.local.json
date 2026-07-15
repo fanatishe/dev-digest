@@ -2,9 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(node_modules/.bin/tsc --noEmit)",
-      "Bash(node_modules/.bin/vitest run *)",
-      "Bash(node crawl.mjs --source eurodns --dry-run)",
-      "Bash(sed 's/^[a-z0-9-]*-domain-registration$/TLD-REGISTRATION-PAGE/')"
+      "Bash(node_modules/.bin/vitest run *)"
     ]
   },
   "enabledMcpjsonServers": [

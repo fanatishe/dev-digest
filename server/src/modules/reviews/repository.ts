@@ -45,9 +45,18 @@ export class ReviewRepository {
     return pullRepo.getPrFiles(this.db, prId);
   }
 
-  /** `pr_number → title` for a repo's imported PRs (enriches PR-history titles). */
-  getPrTitlesForRepo(workspaceId: string, repoId: string): Promise<Map<number, string>> {
-    return pullRepo.getPrTitlesForRepo(this.db, workspaceId, repoId);
+  /** `pr_number → {title, branch}` for a repo's imported PRs (PR-history corroboration). */
+  getPrRefsForRepo(
+    workspaceId: string,
+    repoId: string,
+  ): Promise<Map<number, { title: string; branch: string }>> {
+    return pullRepo.getPrRefsForRepo(this.db, workspaceId, repoId);
+  }
+
+  /** Most recent `updated_at` across a repo's imported PRs — the Blast card's
+   *  network-free staleness signal (see `pullRepo.getLatestPrActivity`). */
+  getLatestPrActivity(workspaceId: string, repoId: string): Promise<Date | null> {
+    return pullRepo.getLatestPrActivity(this.db, workspaceId, repoId);
   }
 
   // ---- reviews + findings -------------------------------------------------

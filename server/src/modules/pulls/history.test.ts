@@ -85,17 +85,34 @@ describe('buildPrHistory', () => {
     expect(history[0]!.title).toContain('#5');
   });
 
-  // ---- title enrichment from the imported-PR table -------------------------
+  // ---- corroboration: is "#N" really THIS repo's PR N? ----------------------
+  // A number in git log is NOT this repo's namespace: a fork inherits upstream's
+  // history, and fork numbering restarts at #1 — so upstream's #5 and the fork's #5 are
+  // unrelated PRs. Links, self-exclusion and title enrichment all gate on corroboration
+  // (merge commit → branch match; squash commit → exact title match).
 
-  it('uses the imported GitHub title when a merge commit has an empty body', () => {
+  it('uses the imported GitHub title when a merge commit has an empty body AND the branch matches', () => {
     const { history } = buildPrHistory(
       [commit({ message: 'Merge pull request #5 from fanatishe/feat/x', body: '' })],
       CHANGED,
-      undefined,
-      new Map([[5, 'Add findings severity filter']]),
+      { importedPrs: new Map([[5, { title: 'Add findings severity filter', branch: 'feat/x' }]]) },
     );
     // Not the branch line — the real title from our own pull_requests row.
     expect(history[0]!.title).toBe('Add findings severity filter');
+    expect(history[0]!.number_confirmed).toBe(true);
+  });
+
+  it('REFUSES the imported title when the branch does not match — that #5 is not our #5', () => {
+    // The fork case: upstream's merge commit #5 came from a branch our imported PR #5
+    // never had. Stamping our title onto upstream's PR would be confidently wrong.
+    const { history } = buildPrHistory(
+      [commit({ message: 'Merge pull request #5 from upstream/feat/other', body: '' })],
+      CHANGED,
+      { importedPrs: new Map([[5, { title: 'Our unrelated fork PR', branch: 'feat/mine' }]]) },
+    );
+    expect(history[0]!.title).not.toBe('Our unrelated fork PR');
+    expect(history[0]!.title).toContain('#5'); // the honest subject fallback
+    expect(history[0]!.number_confirmed).toBe(false);
   });
 
   it('does NOT let the imported title override a title git already recorded', () => {
@@ -104,28 +121,47 @@ describe('buildPrHistory', () => {
     const merge = buildPrHistory(
       [commit({ message: 'Merge pull request #5 from o/b', body: 'Original merge title' })],
       CHANGED,
-      undefined,
-      new Map([[5, 'Renamed later on GitHub']]),
+      { importedPrs: new Map([[5, { title: 'Renamed later on GitHub', branch: 'b' }]]) },
     );
     expect(merge.history[0]!.title).toBe('Original merge title');
+    // …but the branch DID match, so the number itself is still confirmed (→ /pull/N link).
+    expect(merge.history[0]!.number_confirmed).toBe(true);
 
     const squash = buildPrHistory(
       [commit({ message: 'Squashed work (#7)' })],
       CHANGED,
-      undefined,
-      new Map([[7, 'Renamed later on GitHub']]),
+      { importedPrs: new Map([[7, { title: 'Renamed later on GitHub', branch: 'x' }]]) },
     );
     expect(squash.history[0]!.title).toBe('Squashed work');
+    // Squash corroborates by exact title; a renamed PR fails the gate → commit link.
+    expect(squash.history[0]!.number_confirmed).toBe(false);
   });
 
-  it('falls back to the subject when the number is not in the imported map', () => {
+  it('confirms a squash number when the imported title matches exactly', () => {
+    const { history } = buildPrHistory(
+      [commit({ message: 'Squashed work (#7)' })],
+      CHANGED,
+      { importedPrs: new Map([[7, { title: 'Squashed work', branch: 'x' }]]) },
+    );
+    expect(history[0]!.number_confirmed).toBe(true);
+  });
+
+  it('falls back to the subject, unconfirmed, when the number is not in the imported map', () => {
     const { history } = buildPrHistory(
       [commit({ message: 'Merge pull request #9 from o/b', body: '' })],
       CHANGED,
-      undefined,
-      new Map([[5, 'Some other PR']]), // #9 absent
+      { importedPrs: new Map([[5, { title: 'Some other PR', branch: 'z' }]]) }, // #9 absent
     );
     expect(history[0]!.title).toContain('#9');
+    expect(history[0]!.number_confirmed).toBe(false);
+  });
+
+  it('carries the merge commit sha — the namespace-free link target', () => {
+    const { history } = buildPrHistory(
+      [commit({ sha: 'cafebabe', message: 'Merge pull request #9 from o/b', body: '' })],
+      CHANGED,
+    );
+    expect(history[0]!.merge_sha).toBe('cafebabe');
   });
 
   it('handles a repo that mixes both merge strategies', () => {
@@ -168,9 +204,34 @@ describe('buildPrHistory', () => {
     expect(history).toEqual([]);
   });
 
-  it('excludes the PR being viewed from its own history', () => {
-    const { history } = buildPrHistory([commit({})], CHANGED, 356);
+  it('excludes the PR being viewed from its own history (corroborated by title)', () => {
+    // The default fixture is the squash `Add ioredis client for session cache (#356)`.
+    const { history } = buildPrHistory([commit({})], CHANGED, {
+      currentPr: {
+        number: 356,
+        title: 'Add ioredis client for session cache',
+        branch: 'feat/redis',
+      },
+    });
     expect(history).toEqual([]);
+  });
+
+  it("does NOT hide an upstream PR that merely SHARES the current PR's number", () => {
+    // The fork case: viewing the fork's own PR #5 while upstream's merged #5 is in the
+    // inherited history. Same number, different PR — excluding it by bare number would
+    // silently drop real history.
+    const { history } = buildPrHistory(
+      [
+        commit({
+          message: 'Merge pull request #5 from upstream/feat/new_agents',
+          body: 'Add the new agents',
+        }),
+      ],
+      CHANGED,
+      { currentPr: { number: 5, title: 'My fork PR', branch: 'feat/my-work' } },
+    );
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({ pr_number: 5, title: 'Add the new agents' });
   });
 
   it('sorts most recently merged first', () => {

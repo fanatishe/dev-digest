@@ -46,7 +46,12 @@ export const HISTORY_MAX_ITEMS = 5;
  * skipped rather than guessed at.
  */
 export const SQUASH_MERGE_PR_RE = /\(#(\d+)\)\s*$/;
-export const MERGE_COMMIT_PR_RE = /^Merge pull request #(\d+) from \S+/;
+/**
+ * Group 1 = the PR number; group 2 = the HEAD REF (`owner/branch`). The ref is the
+ * corroboration signal: `pull_requests.branch` for this repo's own PR #N must match it,
+ * or the number belongs to some OTHER repo's numbering (a fork's upstream, typically).
+ */
+export const MERGE_COMMIT_PR_RE = /^Merge pull request #(\d+) from (\S+)/;
 
 /** Overlapping files named inline in the derived `notes` before eliding. */
 export const NOTES_MAX_FILES_NAMED = 3;

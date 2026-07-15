@@ -7,6 +7,19 @@ for the rubric.
 ## What Works
 <!-- Approaches, patterns, and solutions that proved effective. problem → what to do. -->
 
+- **A poll that STOPS itself: drive `refetchInterval` off the response payload, not a
+  caller-owned flag.** The Blast card's server returns `refreshing: true` while a
+  background clone/index resync is in flight. `hooks/blast.ts` polls with the FUNCTION
+  form — `refetchInterval: (query) => query.state.data?.refreshing ? 1500 : false`
+  (TanStack Query v5) — so the query keeps refetching purely because its own last
+  response said so, and stops the instant one comes back `refreshing: false`. This is
+  strictly simpler than the older `useRepoIntelStatus(repoId, poll)` pattern
+  (`hooks/repo-intel.ts`), where the CALLER owns a `poll` boolean and must itself detect
+  completion by watching `lastIndexedSha`/`updatedAt` advance. When the server can tell
+  you "still working / done" in the payload, let the hook self-terminate — no component
+  state, no effect, no completion-watcher. Pairs with a server staleness signal that is
+  itself self-terminating (see `server/INSIGHTS.md`, 2026-07-15). (2026-07-15)
+
 - **Hover popover in a table MUST portal to `document.body` with `position:fixed`.**
   `vendor/ui/primitives/FindingsPopover.tsx` is the module's first real popover
   (everything else used native `title`). An absolutely-positioned popup gets clipped

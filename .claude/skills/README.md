@@ -20,6 +20,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [engineering-insights](engineering-insights/SKILL.md) | Meta | Per-module capture-learnings loop — read `<module>/INSIGHTS.md` at session start, append significant learnings at session end |
 | [pr-self-review](pr-self-review/SKILL.md) | Meta | Local pre-PR gate — diff vs main, route changed files to the domain skills, run deterministic checks (onion/typecheck/tests/secrets/schema), BLOCK the PR on a critical finding |
+| [sdd-implement](sdd-implement/SKILL.md) | Meta | Runs the execution half of the SDD pipeline from an approved plan — fans `implementer`s out over the work packages, runs the verifiers once writes settle, loops on `architecture-reviewer`'s advisory comments, checks the spec, runs the `pr-self-review` gate. Main-loop only (spawns subagents, asks you questions); pauses at the seams; writes nothing itself and never commits |
 
 ## Agents
 

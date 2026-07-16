@@ -7,3 +7,7 @@ The code in `src/vendor/shared` is the runtime source of truth; docs here explai
 *intent* and cross-route invariants that a schema alone doesn't capture.
 
 `server/CLAUDE.md` points here with "Read when… adding or changing an API route".
+
+Author feature specs here with **`/spec-creator`** — file names `YYYY-MM-DD-<slug>.md`
+(Spec ID `SPEC-NN` inside is the stable handle). A spec spanning more than one module goes
+in the top-level `spec/` folder instead.

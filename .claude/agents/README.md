@@ -34,7 +34,8 @@ This is the repo's own `Owns` rule, lifted to the agent roster.
 | `*/test/**`, `**/*.test.ts(x)`, `e2e/specs/*.flow.json` | `test-writer` |
 | `docs/plans/**` | `planner` |
 | `docs/**` (everything else), `<module>/docs/**` | `doc-writer` |
-| `AGENTS.md` · `CLAUDE.md` · `INSIGHTS.md` · `specs/**` · package `README.md` | **no agent** — a human, or the orchestrating session via `/engineering-insights` |
+| `<module>/specs/**`, top-level `spec/**` | the [`spec-creator`](../skills/spec-creator/SKILL.md) skill (runs in the main session, not a roster agent) |
+| `AGENTS.md` · `CLAUDE.md` · `INSIGHTS.md` · package `README.md` | **no agent** — a human, or the orchestrating session via `/engineering-insights` |
 
 **Five of the ten write nothing at all**: `researcher`, `investigator`, `brainstorm`,
 `architecture-reviewer`, `plan-verifier`, `insights-curator`. Read-only is the default here, not

@@ -20,6 +20,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [engineering-insights](engineering-insights/SKILL.md) | Meta | Per-module capture-learnings loop — read `<module>/INSIGHTS.md` at session start, append significant learnings at session end |
 | [pr-self-review](pr-self-review/SKILL.md) | Meta | Local pre-PR gate — diff vs main, route changed files to the domain skills, run deterministic checks (onion/typecheck/tests/secrets/schema), BLOCK the PR on a critical finding |
+| [spec-creator](spec-creator/SKILL.md) | SDD | `/spec-creator` — authors a feature spec with EARS acceptance criteria. Grounds in the real designs (docs/plans, code, Figma, screenshots), interviews for anything ambiguous, and writes ONLY into specs surfaces (`<module>/specs/**`, top-level `spec/**`). Never guesses a criterion the user didn't confirm |
 
 ## Agents
 

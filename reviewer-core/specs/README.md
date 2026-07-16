@@ -6,3 +6,7 @@ implementation: the grounding rule (ungrounded findings are dropped), the
 deterministic score formula, and the injection-guard guarantee.
 
 `reviewer-core/CLAUDE.md` points here with "Read when… changing engine output".
+
+Author feature specs here with **`/spec-creator`** — file names `YYYY-MM-DD-<slug>.md`
+(Spec ID `SPEC-NN` inside is the stable handle). A spec spanning more than one module goes
+in the top-level `spec/` folder instead.

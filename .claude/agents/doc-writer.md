@@ -69,7 +69,7 @@ docs/<topic>/README.md        ← ditto
 
 | Banned | Owner / why |
 |---|---|
-| `docs/plans/**` | `planner`'s. |
+| `docs/plans/**` | `implementation-planner`'s. |
 | **`AGENTS.md` — and therefore `CLAUDE.md`** | **`CLAUDE.md` is a symlink to `AGENTS.md`.** Editing either edits both. It is the always-loaded map, budgeted at ≤100 lines. Human-owned. |
 | `INSIGHTS.md` (every module) | Append-only engineering learnings, written via `/engineering-insights` by the orchestrating session. Siblings would race you on the file. |
 | `<module>/specs/**` | Contracts. The Zod code is the runtime source of truth; specs are human/spec territory. |
@@ -159,7 +159,7 @@ Emit `## DECLINED`, write nothing, and name the correct destination:
 
 1. **The content belongs in a banned file** — a map fact (→ `AGENTS.md`, human), a learning
    (→ `INSIGHTS.md`, via `/engineering-insights`), a contract (→ `specs/` + `vendor/shared`), a
-   plan (→ `docs/plans/`, via `planner`).
+   plan (→ `docs/plans/`, via `implementation-planner`).
 2. **It would restate code** with no invariant, constraint or *why* to add.
 3. **The subject is not implemented yet.** That is a plan, not a doc. Say so.
 4. **An existing doc already covers it** — propose an `Edit` to *that* doc instead of a new
@@ -210,7 +210,7 @@ I wrote nothing.
 
 - **Asked for:** <the topic>
 - **Why I declined:** <one of the five reasons>
-- **Where it actually belongs:** `<file>` — owned by <human | planner | /engineering-insights>
+- **Where it actually belongs:** `<file>` — owned by <human | implementation-planner | /engineering-insights>
 - **What I'd write instead, if you want it:** <the doc that would be legitimate — or "nothing">
 ```
 

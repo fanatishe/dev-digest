@@ -15,7 +15,7 @@ team via version control.
 | Understand | [researcher](researcher.md) | no | sonnet | The **public web** — library docs, changelogs, API behaviour, versions. Reads primary sources, not snippets; checks them against the version we actually pin. A citation per claim, and an explicit list of what it could **not** find |
 | Understand | [investigator](investigator.md) | no | opus | **This codebase.** Four modes: `locate` · `trace` (the call chain) · `impact` (**what breaks if I change this**) · `history` (why it came to be). Ships a Mermaid diagram. Knows the repo's search traps — `server/clones/**` is a stale copy of the whole tree, the contracts are vendored **twice**, imports go through tsconfig aliases |
 | Explore | [brainstorm](brainstorm.md) | no | opus | **Best-of-N, before anything is planned.** Generates variants that must differ along a **declared axis** (not just in wording), grounds each in the files it would touch, **disqualifies** the ones breaking a hard repo rule, scores them on stated weights, and recommends one + the best idea to graft from the runner-up. Variant 0 is always *"extend what exists"* |
-| Plan | [planner](planner.md) | `docs/plans/**` only | opus | Writes a **Development Plan** — work packages with **disjoint file ownership**, so implementers can run in parallel. Plans only; never edits product source |
+| Plan | [implementation-planner](implementation-planner.md) | `docs/plans/**` only | opus | Reviews the requirements, flags what's unclear, and recommends a better approach; then writes an **Implementation Plan** — **multi-agent** (parallel work packages with **disjoint file ownership**) or **single-agent** (one linear task list), whichever you pick. Plans only; **never writes specs**, never edits product source |
 | Build | [implementer](implementer.md) | its work package's `Owns` paths only | opus | Executes **one** work package from a plan. Its `Surface:` selects a closed skill set (backend or frontend); **all** of that set must be applied, none outside it. Gated on typecheck + tests + `pr-self-review` |
 | Build | [test-writer](test-writer.md) | **test paths only** — `*/test/**`, `**/*.test.ts(x)`, `e2e/specs/*.flow.json` | opus | Picks the test **level** from the seam (unit · `.it.test.ts` · RTL · e2e flow), writes the test, runs the lane, pastes the real tail. **Never edits product source** — a test that fails because the code is buggy is reported as a Finding and `BLOCKED_SOURCE_BUG`; the red test stays in the tree |
 | Verify | [architecture-reviewer](architecture-reviewer.md) | no | opus | Runs the shipped dependency-cruiser onion ruleset (**partitioning the known baseline**), then judges structure against the architecture skills. Advisory findings in the repo's `Finding`/`Verdict` contract. Reviews **structure, not lines** |
@@ -32,10 +32,9 @@ This is the repo's own `Owns` rule, lifted to the agent roster.
 |---|---|
 | `server/src/**`, `client/src/**`, `reviewer-core/src/**` (non-test) | `implementer` |
 | `*/test/**`, `**/*.test.ts(x)`, `e2e/specs/*.flow.json` | `test-writer` |
-| `docs/plans/**` | `planner` |
+| `docs/plans/**` | `implementation-planner` |
 | `docs/**` (everything else), `<module>/docs/**` | `doc-writer` |
-| `<module>/specs/**`, top-level `spec/**` | the [`spec-creator`](../skills/spec-creator/SKILL.md) skill (runs in the main session, not a roster agent) |
-| `AGENTS.md` · `CLAUDE.md` · `INSIGHTS.md` · package `README.md` | **no agent** — a human, or the orchestrating session via `/engineering-insights` |
+| `AGENTS.md` · `CLAUDE.md` · `INSIGHTS.md` · `specs/**` · package `README.md` | **no agent** — a human, or the orchestrating session via `/engineering-insights` |
 
 **Five of the ten write nothing at all**: `researcher`, `investigator`, `brainstorm`,
 `architecture-reviewer`, `plan-verifier`, `insights-curator`. Read-only is the default here, not
@@ -52,7 +51,8 @@ with no `Write` tool, the violation is structurally impossible rather than merel
 ```
         brainstorm ──▶ N variants, scored ──▶ one recommendation   (before anything is planned)
              │
-you ──▶ planner ──▶ docs/plans/<date>-<slug>.md   (WP0 + WP1..WPn, disjoint Owns)
+you ──▶ implementation-planner ──▶ docs/plans/<date>-<slug>.md   (multi-agent: WP0 + WP1..WPn, disjoint Owns
+                                                                 · single-agent: one ordered task list)
                           │
         implementer(WP0)  — serial: contracts, migration, wiring
                           │           ↓ those paths are now LOCKED
@@ -94,10 +94,10 @@ this repo already had. Each design decision below traces to a source.
 
 | What it says | How this repo's agents use it | Source |
 |---|---|---|
-| **`AskUserQuestion` is never available to a subagent**, regardless of the `tools` field | Neither agent can interview you. Both return a `CLARIFICATION_NEEDED` block and stop — the pattern `researcher.md` already used | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
-| A subagent starts with a **fresh, isolated context** — no conversation history, no files already read | The plan artifact must be **self-contained**. The planner's prompt states it outright: *"If a fact is not in the plan, it does not exist"* | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
-| **`skills:` preloads a skill's full text** into the subagent at startup (a preload field, not access control). A skill setting `disable-model-invocation` cannot be preloaded | `implementer` preloads all 11 domain skills; `planner` preloads the same 11 (so it plans against the rules the implementer is held to) plus `mermaid-diagram` and `engineering-insights`. None of the 13 set `disable-model-invocation` | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
-| `tools` is an **allowlist**; omitting it inherits everything | Both declare an explicit, minimal list. `planner` has **no `Edit`**, and may only `Write` under `docs/plans/**` | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
+| **`AskUserQuestion` is never available to a subagent**, regardless of the `tools` field | No agent can interview you mid-run. They surface questions in a returned block and stop — `researcher`/`plan-verifier` use `CLARIFICATION_NEEDED`; `implementation-planner` uses `REQUIREMENTS_NEEDED`, which the orchestrating session relays back and re-invokes with the answers (this is how it asks you to pick multi- vs single-agent mode) | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
+| A subagent starts with a **fresh, isolated context** — no conversation history, no files already read | The plan artifact must be **self-contained**. The implementation-planner's prompt states it outright: *"If a fact is not in the plan, it does not exist"* | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
+| **`skills:` preloads a skill's full text** into the subagent at startup (a preload field, not access control). A skill setting `disable-model-invocation` cannot be preloaded | `implementer` preloads all 11 domain skills; `implementation-planner` preloads the same 11 (so it plans against the rules the implementer is held to) plus `mermaid-diagram` and `engineering-insights`. None of the 13 set `disable-model-invocation` | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
+| `tools` is an **allowlist**; omitting it inherits everything | Both declare an explicit, minimal list. `implementation-planner` has **no `Edit`**, and may only `Write` under `docs/plans/**` | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
 | **`description` is the routing signal** — write it third-person and specific, with trigger terms | Both descriptions are third-person and say *when* to use the agent | [agent-skills best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) |
 | Emphasis (`IMPORTANT`, `YOU MUST`) is an endorsed tuning lever — but **prose is advisory; hooks and gates are deterministic** | The skill rules use `YOU MUST` phrasing, but enforcement does **not** rest on prose: it rests on the `pr-self-review` gate and a mandatory skill-coverage table where every skip must be justified | [skills](https://code.claude.com/docs/en/skills) |
 
@@ -108,8 +108,8 @@ this repo already had. Each design decision below traces to a source.
 | **"Two teammates editing the same file leads to overwrites. Break the work so each teammate owns a different set of files."** | The single most load-bearing rule here. Every work package declares **`Owns`** globs, disjoint from every other WP; the plan assigns each contention file to exactly one WP | [agent-teams](https://code.claude.com/docs/en/agent-teams) |
 | Give each parallel agent **an objective, an output format, tool guidance, and clear task boundaries** — without them, *"agents duplicate work, leave gaps"* | The shape of a work package: Surface · Owns · Must-not-touch · skill set · acceptance criteria | [multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) |
 | **"Claude stops when the work looks done. Without a check it can run, 'looks done' is the only signal available."** | `implementer` may not report `DONE` until typecheck, the package's tests, and `pr-self-review` all pass — and must paste the real output, not paraphrase a failure as a pass | [best practices](https://code.claude.com/docs/en/best-practices) |
-| Good specs **name the files and interfaces, state what is out of scope, and end with an end-to-end verification step** | Sections 2 (Non-goals), 4–5 (contracts/DB, verbatim), 6 (files per WP) and 9 (runnable verification) of the plan template | [best practices](https://code.claude.com/docs/en/best-practices) |
-| Explore → Plan → Implement → Commit; a fresh-context reviewer judges the diff against the plan, not against the reasoning that produced it | The planner/implementer split *is* this, with `pr-self-review` as the fresh-context reviewer | [best practices](https://code.claude.com/docs/en/best-practices) |
+| Good specs **name the files and interfaces, state what is out of scope, and end with an end-to-end verification step** | Sections 2 (Non-goals), 4–5 (contracts/DB, verbatim), 6 (files per WP) and 9 (runnable verification) of the multi-agent plan template | [best practices](https://code.claude.com/docs/en/best-practices) |
+| Explore → Plan → Implement → Commit; a fresh-context reviewer judges the diff against the plan, not against the reasoning that produced it | The implementation-planner/implementer split *is* this, with `pr-self-review` as the fresh-context reviewer | [best practices](https://code.claude.com/docs/en/best-practices) |
 | Subagents should return **condensed, structured summaries**, not raw exploration | Both agents have rigid output templates and start at their first heading — no preamble | [context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) |
 | Aim for the **"right altitude"** — specific enough to guide, flexible enough not to be brittle | The agent bodies **link** to `AGENTS.md` / `docs/` / `INSIGHTS.md` rather than duplicating them, which would go stale | [context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) |
 | *"Have one Claude write tests, then another write code to pass them"* — and scope the ask: *"write a test for foo.py covering the edge case where the user is logged out. **avoid mocks**"* | The `implementer` / `test-writer` split, and `test-writer`'s explicit mock-boundary rule | [best practices](https://code.claude.com/docs/en/best-practices) |
@@ -159,9 +159,11 @@ Two things the research **did not** support, recorded so nobody re-litigates the
 Contracts, the DB migration, and the two genuinely shared wiring files
 (`server/src/modules/index.ts`, `server/src/platform/container.ts`) are exactly where
 parallel implementers collide — **every new server module must register in both**. So the
-planner hoists them into a serial **`WP0 — Foundation`** that lands first; those paths are
+implementation-planner hoists them into a serial **`WP0 — Foundation`** that lands first; those paths are
 then **LOCKED**, and the implementers fan out against a stable contract and a migrated DB. An
-implementer that needs a LOCKED file reports `BLOCKED` rather than editing it.
+implementer that needs a LOCKED file reports `BLOCKED` rather than editing it. (In single-agent
+mode there is only one implementer, so there is no contention and no WP0 — the step *order*
+carries the same contract-first, migrate-first discipline.)
 
 Without this, file ownership breaks the first time two work packages both add a module. No
 published guidance covers it — it falls out of this repo's static module registry and its

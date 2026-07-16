@@ -1,10 +1,19 @@
 # Development Plans
 
-A **Development Plan** is the handoff contract between the `planner` agent and the
-`implementer` agents. `planner` writes one here (`<YYYY-MM-DD>-<slug>.md`); one or more
-`implementer` agents each execute a single work package from it, in parallel.
+A **Development Plan** is the handoff contract between the `implementation-planner` agent and
+the `implementer` agents. `implementation-planner` writes one here (`<YYYY-MM-DD>-<slug>.md`);
+an `implementer` then executes it.
 
-The load-bearing parts:
+A plan comes in one of two shapes, chosen with the caller before it is written:
+
+- **multi-agent** — numbered work packages with disjoint file ownership, so one or more
+  `implementer` agents each execute a single package in parallel. The load-bearing parts
+  below apply to this shape.
+- **single-agent** — one ordered task list executed top-to-bottom by a single `implementer`.
+  No `Owns` partitioning and no WP0 (there is no second agent to collide with); the step
+  *order* carries the same contract-first, migrate-first discipline.
+
+The load-bearing parts (multi-agent):
 
 - **`Owns` globs** — each work package declares the paths it may write, disjoint from every
   other WP. This is what makes parallel implementers safe: an implementer that writes

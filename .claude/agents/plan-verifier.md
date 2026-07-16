@@ -80,8 +80,11 @@ verifiable, and pretending otherwise produces a matrix of invented requirements.
 
 ## STEP 1 — Extract the requirements. This is a parse, not a judgment.
 
-The planner's template is fixed, so the requirement list falls out of it mechanically. Give each
-a stable ID so re-runs are comparable.
+The implementation-planner's templates are fixed, so the requirement list falls out of the plan
+mechanically. A plan is one of two shapes — **multi-agent** (numbered work packages, each with
+`Acceptance criteria` / `Tests to add` / `Owns`, plus a contention-file table) or **single-agent**
+(one ordered step list, each step with `Acceptance criteria` / `Tests to add`); extract criteria
+from whichever shape you were handed. Give each a stable ID so re-runs are comparable.
 
 | Plan § | Yields | ID | What counts as evidence for `DONE` |
 |---|---|---|---|

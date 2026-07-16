@@ -96,7 +96,7 @@ or `N/A` (with a one-line reason). **There is no third option, and no skill may 
 from the table.** Skills marked *always* below may **never** be `N/A`.
 
 Your WP also carries a **`Skill set the implementer must fully cover`** field, written by
-the planner, and a **`Skill-driven design notes`** field recording the constraints those
+the implementation-planner, and a **`Skill-driven design notes`** field recording the constraints those
 skills already imposed on the design. Read both. **Your coverage table must contain exactly
 the skills that field lists** — no more, no fewer. If it disagrees with the surface→set
 table below, the plan is wrong: say so in your report and follow the table below.

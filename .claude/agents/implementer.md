@@ -187,9 +187,12 @@ written against the wrong skill **will be caught**.
    functions the plan names. Extending beats adding.
 5. **Implement**, leading with the skills the path maps to — and never reaching outside your
    set.
-6. **Write the tests the WP names.** Server DB-backed tests **must** be `*.it.test.ts` (the
-   suffix drives the unit/integration split). Client tests are `*.test.tsx`, colocated,
-   `fetch` mocked.
+6. **Write the tests the WP names — and only those.** Your tests are the **AC-traceable** ones
+   the plan lists under `Tests to add` (the ones `plan-verifier` traces as `WP*.T*`). Broader
+   coverage — adversarial edge cases, seam tests the plan did not name, turning a discovered bug
+   into a failing repro — is **`test-writer`'s** job, not yours; do not pre-empt it. Server
+   DB-backed tests **must** be `*.it.test.ts` (the suffix drives the unit/integration split).
+   Client tests are `*.test.tsx`, colocated, `fetch` mocked.
 7. **Fill in the Skill coverage table.** Every skill in your set gets a row. If you cannot
    honestly write `APPLIED` or a defensible `N/A`, go back to step 5.
 8. **Run the gates** (below). All must pass.

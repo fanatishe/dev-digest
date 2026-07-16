@@ -39,10 +39,9 @@ and returns a structured report to the caller.
 | Record | [doc-writer](../agents/doc-writer.md) | Turns a landed feature, a plan, or notes into a grounded design doc with Mermaid diagrams, under `docs/**` and `<module>/docs/**` only. Refuses to invent a rationale the codebase does not record |
 | Record | [insights-curator](../agents/insights-curator.md) | Read-only. Audits `INSIGHTS.md` and proposes a changeset — `KEEP｜CONTRADICTED｜DUPLICATE｜STALE｜GRADUATED｜BANAL｜MISPLACED`. Catches the rule a later session **reversed** but nobody retracted. Proposes; `doc-writer` and the orchestrator apply |
 
-Typical flow: `brainstorm` (weigh the options) → `implementation-planner` → `implementer(WP0)` (serial:
-contracts, migration, wiring) → `implementer(WP1) ∥ implementer(WP2)` (parallel, disjoint paths)
-→ `test-writer` → `architecture-reviewer ∥ plan-verifier` → **`pr-self-review`** (the gate) →
-`doc-writer` · `insights-curator`. `investigator` answers codebase questions at any point.
+The end-to-end pipeline — phase order, the read-only-vs-writer race rule, the failure
+loop-backs, and the gate — is the **runbook** at [`docs/sdd-workflow.md`](../../docs/sdd-workflow.md).
+That is the single source of truth; do not restate the sequence here or it will drift.
 
 **Every agent that writes owns a surface no other agent writes** — that write map is in
 [`.claude/agents/README.md`](../agents/README.md), along with what each agent is based on (with

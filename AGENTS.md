@@ -45,6 +45,9 @@ Do not duplicate module rules here. Each is auto-loaded when you work in that fo
 
 Each module also carries `docs/` (design SoT), `specs/` (contracts), and an
 append-only `INSIGHTS.md` (engineering learnings). Link to them — don't copy them here.
+Feature specs (EARS contracts) are authored by the `spec-creator` agent into
+`<module>/specs/**`; a spec whose behaviour genuinely spans ≥2 packages lives in the
+top-level `spec/` surface.
 
 ## Session Protocol (engineering-insights loop)
 
@@ -63,6 +66,7 @@ Knowledge compounds per module via `<module>/INSIGHTS.md`. See
 ## Read when
 
 - Understanding the whole system → `README.md` (architecture + flow diagrams)
+- Running the SDD pipeline (spec → plan → build → verify → gate) → `docs/sdd-workflow.md`
 - Working on tests or CI → `TESTING.md` (one suite per package, path-filtered)
 - Writing/editing a reviewer agent prompt → `docs/agent-prompts/README.md`
 - Anything module-specific → that module's `CLAUDE.md` (then its `docs/`/`specs/`)

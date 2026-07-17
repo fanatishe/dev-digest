@@ -1,4 +1,4 @@
-# sdd-implement — pipeline reference
+# run-plan — pipeline reference
 
 Driver-side detail for [`../SKILL.md`](../SKILL.md). The **canonical** phase order, the
 read-only-vs-writer race, and the failure loop-backs live in the runbook

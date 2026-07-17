@@ -1,5 +1,5 @@
 ---
-name: sdd-implement
+name: run-plan
 description: >-
   Drives the execution half of DevDigest's SDD pipeline from an already-approved plan —
   Build → Verify → architecture-review iteration → Accept → Gate → Record. Runs in the main
@@ -9,14 +9,14 @@ description: >-
   advisory comments, checks the spec, and runs the pr-self-review gate — pausing at the seams and
   relaying every subagent question block to you. Does NOT write specs or plans (spec-creator and
   implementation-planner run separately) and never edits product source or commits. Use when a plan
-  is approved and ready to build. Trigger terms: /sdd-implement, implement the plan, execute the plan,
+  is approved and ready to build. Trigger terms: /run-plan, implement the plan, execute the plan,
   run the build, build the plan, sdd, spec-driven build.
 metadata:
   tags: sdd, orchestration, build, verify, gate, meta
 allowed-tools: Read, Grep, Glob, Bash, Task, AskUserQuestion, Skill, WebFetch
 ---
 
-# sdd-implement — run the SDD pipeline from an approved plan
+# run-plan — run the SDD pipeline from an approved plan
 
 You orchestrate the **execution half** of the SDD pipeline. Everything upstream — the spec
 (`spec-creator`) and the plan (`implementation-planner`) — is done **separately, by hand, and

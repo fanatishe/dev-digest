@@ -132,6 +132,15 @@ function RiskRow({
 
   return (
     <div style={s.risk(selected)}>
+      <button type="button" style={s.riskMain} onClick={() => onOpenFile(finding.file)}>
+        <IconEl size={14} style={{ color, flex: "0 0 auto", marginTop: 2 }} aria-hidden />
+        <span style={s.riskText}>
+          <span style={s.riskTitle}>{finding.title}</span>
+          <span className="mono" style={s.riskRef}>
+            {fileRef(finding)}
+          </span>
+        </span>
+      </button>
       <button
         type="button"
         aria-expanded={selected}
@@ -140,13 +149,6 @@ function RiskRow({
         onClick={onToggle}
       >
         <Icon.ChevronRight size={14} style={s.chevron(selected)} aria-hidden />
-      </button>
-      <button type="button" style={s.riskMain} onClick={() => onOpenFile(finding.file)}>
-        <IconEl size={14} style={{ color, flex: "0 0 auto" }} aria-hidden />
-        <span style={s.riskTitle}>{finding.title}</span>
-        <span className="mono" style={s.riskRef}>
-          {fileRef(finding)}
-        </span>
       </button>
     </div>
   );

@@ -36,7 +36,7 @@ export const s = {
   } as CSSProperties,
   emptyHint: { fontSize: 13, color: "var(--text-secondary)", margin: "0 0 10px", lineHeight: 1.5 } as CSSProperties,
 
-  // The list of selectable finding blocks.
+  // The list of selectable finding blocks. Each row: [icon + stacked text] … [chevron].
   risks: { display: "flex", flexDirection: "column", gap: 6 } as CSSProperties,
   risk: (selected: boolean): CSSProperties => ({
     display: "flex",
@@ -46,12 +46,47 @@ export const s = {
     background: "var(--bg-elevated)",
     overflow: "hidden",
   }),
+  riskMain: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+    padding: "9px 6px 9px 11px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    textAlign: "left",
+  } as CSSProperties,
+  // The stacked text column — title over file:line — that wraps within the row.
+  riskText: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minWidth: 0,
+    flex: 1,
+  } as CSSProperties,
+  riskTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--text-primary)",
+    overflowWrap: "anywhere",
+  } as CSSProperties,
+  riskRef: {
+    fontSize: 12,
+    fontWeight: 400,
+    color: "var(--text-muted)",
+    overflowWrap: "anywhere",
+  } as CSSProperties,
   chevronBtn: {
     display: "flex",
     alignItems: "center",
-    padding: "0 6px 0 10px",
+    flex: "0 0 auto",
+    padding: "0 11px",
     background: "none",
     border: "none",
+    // A hairline divider between the block body and the toggle, matching the card border.
+    borderLeft: "1px solid var(--border)",
     cursor: "pointer",
   } as CSSProperties,
   chevron: (open: boolean): CSSProperties => ({
@@ -60,28 +95,6 @@ export const s = {
     transform: open ? "rotate(90deg)" : "none",
     transition: "transform .12s",
   }),
-  riskMain: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    flex: 1,
-    minWidth: 0,
-    padding: "9px 11px 9px 2px",
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    textAlign: "left",
-    fontSize: 13,
-    color: "var(--text-primary)",
-    fontWeight: 600,
-  } as CSSProperties,
-  riskTitle: { flex: 1, minWidth: 0 } as CSSProperties,
-  riskRef: {
-    flex: "0 0 auto",
-    fontSize: 12,
-    fontWeight: 400,
-    color: "var(--text-muted)",
-  } as CSSProperties,
 
   // The single shared detail panel, rendered once below the list for the selected block.
   detail: {
@@ -101,6 +114,7 @@ export const s = {
   suggestion: { margin: 0, color: "var(--text-muted)" } as CSSProperties,
   detailRef: {
     alignSelf: "flex-start",
+    maxWidth: "100%",
     background: "none",
     border: "none",
     padding: 0,
@@ -109,5 +123,7 @@ export const s = {
     color: "var(--text-secondary)",
     textDecoration: "underline",
     textUnderlineOffset: 2,
+    textAlign: "left",
+    overflowWrap: "anywhere",
   } as CSSProperties,
 } as const;

@@ -14,7 +14,7 @@ export const s = {
   item: {
     display: "flex",
     gap: 12,
-    alignItems: "baseline",
+    alignItems: "flex-start",
     padding: "10px 14px",
     border: "1px solid var(--border)",
     borderRadius: 8,
@@ -27,7 +27,7 @@ export const s = {
     color: "var(--text-muted)",
     minWidth: 18,
   } as CSSProperties,
-  ref: { flex: "0 0 auto" } as CSSProperties,
+  ref: { flex: "0 1 auto", minWidth: 0 } as CSSProperties,
   reason: {
     flex: 1,
     minWidth: 0,
@@ -44,6 +44,8 @@ export const s = {
     color: "var(--text-secondary)",
     textDecoration: "underline",
     textUnderlineOffset: 2,
+    textAlign: "left",
+    overflowWrap: "anywhere",
   } as CSSProperties,
   notInDiff: {
     fontSize: 13,

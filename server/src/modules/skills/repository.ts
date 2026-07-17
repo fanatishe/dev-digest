@@ -173,6 +173,24 @@ export class SkillsRepository {
     return new Map(rows.map((r) => [r.skillId, r.count]));
   }
 
+  /**
+   * Replace the skill's attached Project-context docs with `paths` (ordered).
+   * Metadata-only (no body change) so it does NOT bump the version or snapshot
+   * `skill_versions`. Workspace-scoped; undefined when the skill isn't found.
+   */
+  async setContextDocs(
+    workspaceId: string,
+    id: string,
+    paths: string[],
+  ): Promise<SkillRow | undefined> {
+    const [row] = await this.db
+      .update(t.skills)
+      .set({ contextDocs: paths })
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
+      .returning();
+    return row;
+  }
+
   /** Agents that link this skill, by name. Used by the skill Stats tab. */
   async agentsUsing(skillId: string): Promise<{ id: string; name: string }[]> {
     return this.db

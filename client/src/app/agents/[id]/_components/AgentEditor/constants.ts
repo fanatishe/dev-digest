@@ -7,8 +7,11 @@ export interface EditorTab {
   icon: IconName;
 }
 
-/** Editor tabs. Config + Skills; later lessons add Evals/Stats/CI. */
+/** Editor tabs. Config + Skills + Context; later lessons add Evals/Stats/CI.
+    The Context tab's label resolves under the `projectContext` namespace (see
+    AgentEditor), so its `labelKey` is unused and left blank. */
 export const TABS: readonly EditorTab[] = [
   { key: "config", labelKey: "editor.tabs.config", icon: "Settings" },
   { key: "skills", labelKey: "editor.tabs.skills", icon: "Sparkles" },
+  { key: "context", labelKey: "", icon: "Layers" },
 ];

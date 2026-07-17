@@ -66,8 +66,15 @@ export interface PromptParts {
   skills?: string[];
   /** Relevant memory items (trusted, curated). */
   memory?: string[];
-  /** Project-context spec chunks (untrusted content). */
-  specs?: string[];
+  /**
+   * Project-context spec chunks (untrusted content). Each doc carries its
+   * repo-relative `path` and file `body`. The `### <path>` label is rendered by
+   * this assembler OUTSIDE the `<untrusted>` fence (a label inside the fence is
+   * treated as DATA, per INJECTION_GUARD); only the untrusted `body` is
+   * `wrapUntrusted`-wrapped. Docs with an empty/whitespace body are dropped; if
+   * none remain the whole `## Project context` section is omitted.
+   */
+  specs?: { path: string; body: string }[];
   /**
    * Repo skeleton / map (T3): top-ranked symbols by signature, token-budgeted.
    * Untrusted (derived from repo code) — delimiter-wrapped. Rendered before
@@ -134,9 +141,17 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
     parts.memory && parts.memory.length > 0
       ? parts.memory.map((m) => `- ${m}`).join('\n')
       : undefined;
+  // The `### <path>` header renders OUTSIDE the fence (constrained markdown
+  // structure — paths are isSafeRepoPath-validated at read time, so no newline /
+  // backslash / NUL); only the untrusted body goes inside wrapUntrusted. Docs
+  // with a blank body are dropped, so an all-blank set omits the whole section
+  // (preserves the omit-when-empty byte-identity contract — AC-18).
+  const specDocs = (parts.specs ?? []).filter((d) => d.body.trim().length > 0);
   const specsBlock =
-    parts.specs && parts.specs.length > 0
-      ? parts.specs.map((s, i) => wrapUntrusted(`spec-${i}`, s)).join('\n\n')
+    specDocs.length > 0
+      ? specDocs
+          .map((d) => `### ${d.path}\n${wrapUntrusted(`spec:${d.path}`, d.body)}`)
+          .join('\n\n')
       : undefined;
 
   const prDescription =

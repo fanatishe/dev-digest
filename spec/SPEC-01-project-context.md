@@ -1,6 +1,37 @@
-# Spec: Project Context | Spec ID: SPEC-01 | Status: draft
-Supersedes: none
+# Spec: Project Context | Spec ID: SPEC-01 | Version: 2 | Status: draft
+Supersedes: SPEC-01 v1 — this file supersedes the first version **in place** (see
+"Changelog — v1 → v2" below). No separate `-v2` file: the `spec/` convention is one
+`SPEC-NN-<slug>.md` per feature carrying `Supersedes:`/`Status:`, and there is no
+superseding-file precedent in the repo.
 Surface: cross-module (server · client · reviewer-core)
+
+## Changelog — v1 → v2 (this version)
+This version updates the shipped SPEC-01 to reflect decisions from implementation and
+stakeholder/design review (grounded in `docs/plans/2026-07-17-project-context.md` and its
+`…-addendum.md`, and the `screenshots/Context Folder.png` design). Everything in v1 that
+remains true is preserved unchanged (manual attach/detach/reorder on agents+skills, review-time
+dedup/order/budget/untrusted injection, trace visibility, zero LLM calls, paths-only
+persistence, extend-don't-migrate). The deltas:
+
+1. **AC-1 sharpened (no behaviour change to the model, wording pinned).** Discovery lists every
+   `.md` beneath a directory *named* a configured root (`specs`/`docs`/`insights` by default)
+   found **at any depth in the clone tree**, with the folder label taken from the matched root
+   segment. The nested example is pinned in the observable; markdown outside a configured-root
+   directory is excluded. The configured-roots model stays authoritative (NOT "all markdown
+   labelled by top-level area").
+2. **AC-6 deferral lifted — document body preview is now fully in scope.** The Project Context
+   page is a two-pane master–detail view (document list + preview pane) with a
+   Preview (rendered) / Edit (raw source, **read-only**) toggle. **New AC-23** pins the
+   read-only Edit behaviour (no authoring/write-back, consistent with the no-authoring Non-goal).
+3. **New AC-22 — single-document content read** (the mechanism that feeds AC-6): a read-only
+   lookup that returns ONE document's body for the ACTIVE repo, confined by the (control-char
+   hardened) safe-path guard **before** any file read, `.md`-only, never a 500, nothing persisted.
+4. **New AC-24 + UX corrections from the screenshot** — the page is reachable from the
+   **WORKSPACE** nav group; list rows show file icon, filename, folder-path, and root badge;
+   selecting a row shows its preview in the right pane.
+5. Contracts touched / Inputs / Non-functional / Edge cases updated for the new content-read
+   contract (`ContextDocContent`) and its lazy endpoint. Open questions records the one remaining
+   plan-level judgment call (nested configured-root-within-a-root labelling).
 
 ## Problem and purpose
 A repository's specifications, design docs, and incident write-ups already encode the rules a
@@ -18,6 +49,8 @@ plumbing that already exists but is currently unwired.
   - Discover every `.md` under the configured project-context roots in a repo clone and list
     them on a **Project Context** page and in the agent/skill **Context** tab, with path,
     folder badge, and token count.
+  - Let a user **read** a document's body on the Project Context page in a two-pane master–detail
+    view (rendered markdown Preview + read-only raw-source Edit), before deciding to attach it.
   - Let a user **manually** attach/detach and **order** documents on an agent and on a skill;
     persist only the repo-relative **path strings** (never embedded text) in agent/skill
     metadata.
@@ -33,8 +66,8 @@ plumbing that already exists but is currently unwired.
   - The **L06 cross-check agent** (an agent whose sole job is to verify an implementation against
     a spec and block the merge) is out of scope.
   - **No embedding of document text** into saved agent/skill metadata — paths only.
-  - **No authoring** — the reader is read-only; creating/editing/deleting repo markdown from the
-    UI is out of scope.
+  - **No authoring** — the reader is read-only; the Edit toggle shows raw source with no
+    write-back. Creating/editing/deleting repo markdown from the UI is out of scope.
   - **No new file types or roots beyond config** — only `.md`, only under the configured roots.
   - **No migration of existing shared tables** — attachments are new additive columns only
     (root `CLAUDE.md` extend-don't-migrate rule).
@@ -42,8 +75,8 @@ plumbing that already exists but is currently unwired.
 
 ## User stories
 - **US-1** — As a reviewer author, I want to see every specification/doc/insight markdown in the
-  project on a Project Context page (with its path, folder, and token size), so that I can find
-  what to attach.
+  project on a Project Context page (with its path, folder, and token size) reachable from the
+  WORKSPACE nav, so that I can find what to attach.
 - **US-2** — As a reviewer author, I want to attach, detach, reorder, filter, and preview
   documents on an **agent** and see how many tokens they add, so that I control what context each
   agent's prompt pays for.
@@ -55,6 +88,9 @@ plumbing that already exists but is currently unwired.
 - **US-5** — As a reviewer author, I want the run trace to show which documents were injected,
   their token volume, and their verbatim assembled text, so that I never have to guess what the
   model saw.
+- **US-6** — As a reviewer author, I want to open a document and read its **rendered body** (and
+  inspect its **raw source**, read-only) in a two-pane view on the Project Context page, so that I
+  can verify a doc's content before attaching it.
 
 ## Acceptance criteria (EARS)
 
@@ -62,14 +98,17 @@ plumbing that already exists but is currently unwired.
 - **AC-1** (US-1) — WHEN the Project Context page (or a Context tab) requests the document list,
   the system shall glob the **currently-selected (active) repo's clone** — the repo shown in the
   header repo switcher, not an aggregate across all workspace repos — and return every `.md` file
-  found recursively under the configured roots at any depth, each with its repo-relative path, its
-  root/folder label, and a token count. The roots are an `AppConfig` field (default
+  that lives beneath a directory **named** a configured root (`specs`/`docs`/`insights` by
+  default) found **at any depth in the clone tree**, each with its repo-relative path, a folder
+  label taken from the **matched root segment**, and a token count. Markdown that is not beneath
+  any configured-root directory is excluded. The roots are an `AppConfig` field (default
   `['specs','docs','insights']`) overridable via an env var, following the existing
   `cloneDir` / `DEVDIGEST_CLONE_DIR` precedent in `platform/config.ts` — never a call-site literal.
   _(observable: for the active repo's clone containing `a/specs/x.md`, `b/c/docs/y.md`,
-  `insights/z.md`, and `notes/other.md`, the list is exactly the first three, each with a non-null
-  integer `tokens` and folder label `specs|docs|insights`; the same clone under a second inactive
-  repo does not contribute rows.)_
+  `insights/z.md`, and `notes/other.md`, the list is exactly `a/specs/x.md` (label `specs`),
+  `b/c/docs/y.md` (label `docs`), and `insights/z.md` (label `insights`), each with a non-null
+  integer `tokens`; `notes/other.md` is excluded; the same clone under a second inactive repo does
+  not contribute rows.)_
 - **AC-2** (US-1) — IF the repo has no clone (or the clone is unreadable), THEN the system shall
   return an empty document list and the page shall render an explicit empty state, not an error.
   _(observable: request against an uncloned repo returns `{ docs: [] }` with 200; the page shows
@@ -79,15 +118,36 @@ plumbing that already exists but is currently unwired.
   doc's reported `tokens` equals `tokenizer.count(fileBody)` for that file.)_
 - **AC-4** (US-1) — The system shall display, per document, how many agents (and/or skills)
   currently attach it ("Used by N agents"). _(observable: attaching `specs/public-api.md` to two
-  agents makes its `used_by_agents` count 2 in the list and preview drawer.)_
+  agents makes its `used_by_agents` count 2 in the list and preview pane.)_
 - **AC-5** (US-2) — WHEN the user types in the "Filter documents…" box, the system shall narrow
   the visible rows by path/name substring without a server round-trip changing attachment state.
   _(observable: typing `rate` leaves only rows whose path contains `rate`; checkbox states are
   unchanged.)_
-- **AC-6** (US-2) — WHEN the user opens a document's Preview, the system shall show its
-  repo-relative path, folder badge, token count, "Used by N agents", an Attach/Attached toggle,
-  and the rendered markdown body. _(observable: the preview drawer for `specs/public-api.md`
-  shows `178 tokens`, the `specs` badge, and the rendered document heading.)_
+- **AC-6** (US-6) — WHEN the user selects a document row on the two-pane master–detail Project
+  Context page, the system shall render, in the right-hand **preview pane**, the selected
+  document's repo-relative path, its **root badge**, its **token count**, "Used by N agents", a
+  **Preview / Edit toggle**, and — under **Preview** — the document's **rendered markdown body**.
+  _(observable: selecting the `specs/public-api.md` row shows `178 tokens`, the `specs` badge,
+  "Used by N agents", a Preview/Edit toggle, and the rendered document heading in the right pane.)_
+- **AC-22** (US-6) — WHEN a single document's body is requested for the **active repo**, the
+  system shall validate the requested repo-relative path with the safe-path guard (which rejects
+  absolute, `..`-traversing, backslash, NUL, and **control-character** paths) **BEFORE any file
+  read**, and shall serve the body only for a `.md` file that exists under the active repo's clone
+  root; IF the path is unsafe, non-`.md`, or absent THEN the system shall return **not-found**
+  (HTTP 404) without reading any file outside the clone root and without a 500, and shall persist
+  no document text. _(observable: a content request for a safe, existing `specs/public-api.md`
+  returns `{ path, body }` (200); requests for `../../etc/passwd`, a path containing a control
+  character, a `foo.txt`, and an absent `specs/missing.md` each return 404 — never a 200 body,
+  never a 500; no file outside the clone root is opened; no row is written to any table.)_
+- **AC-23** (US-6) — WHEN the user switches the preview pane to **Edit**, the system shall show
+  the selected document's **raw markdown source, read-only**, with no authoring or write-back
+  affordance, consistent with the no-authoring Non-goal. _(observable: the Edit view shows the
+  verbatim raw markdown source; there is no Save control and no write request is issued while
+  viewing or interacting with it.)_
+- **AC-24** (US-1) — The Project Context page shall be reachable from the **WORKSPACE**
+  navigation group (positioned with the workspace surfaces, alongside Pull Requests), not from the
+  SKILLS LAB group. _(observable: the app-shell nav renders the "Project Context" item within the
+  WORKSPACE group; activating it routes to the Project Context page.)_
 
 ### Attachment / persistence (server + client)
 - **AC-7** (US-2) — WHEN the user attaches or detaches a document on an agent, the system shall
@@ -120,11 +180,12 @@ plumbing that already exists but is currently unwired.
   shall skip that document, record it as not-found in the trace, and the run shall still complete.
   _(observable: an attached path missing from the reviewed clone produces no `### <path>` chunk in
   the prompt, appears in the trace's not-found record, and the run status is `done`.)_
-- **AC-14** (US-4) — IF an attached path is unsafe (absolute, `..`-traversing, backslash/NUL, or
-  otherwise escaping the clone root), THEN the system shall refuse to read it (treat it as
-  not-found) and never read a file outside the clone root. _(observable: an attached path
-  `../../etc/passwd` reads nothing, injects nothing, and is recorded as skipped; no file outside
-  `clonePath` is opened. See `isSafeRepoPath`, `intent-helpers.ts:101`; `readClone` does a plain
+- **AC-14** (US-4) — IF an attached path is unsafe (absolute, `..`-traversing, backslash/NUL,
+  control-character, or otherwise escaping the clone root), THEN the system shall refuse to read it
+  (treat it as not-found) and never read a file outside the clone root. _(observable: an attached
+  path `../../etc/passwd` reads nothing, injects nothing, and is recorded as skipped; no file
+  outside `clonePath` is opened. See `isSafeRepoPath`, `reviews/intent-helpers.ts:108` — now
+  hardened to also reject control characters (`\x00-\x1f`, `\x7f`); `readClone` does a plain
   `join` with no confinement of its own.)_
 - **AC-15** (US-4) — WHEN the summed token count of the resolved documents exceeds the configured
   budget, the system shall inject documents in effective order until the next document would exceed
@@ -169,28 +230,43 @@ plumbing that already exists but is currently unwired.
 - **AC-21** (US-5) — WHEN the user opens the run trace, the Configuration section shall list the
   specs read and the Prompt-assembly section shall expose an expandable "Project context — attached
   specs (untrusted)" entry whose modal shows the verbatim assembled `## Project context` block.
-  _(observable: the trace drawer shows "Specs read: …" and an expandable Project-context block whose
-  content matches `prompt_assembly.specs`.)_
+  _(observable: the trace drawer shows "Specs read: …" and an expandable "Project context — attached
+  specs (untrusted)" block whose content matches `prompt_assembly.specs`.)_
 
 ## Edge cases
 - No clone present → AC-2 (empty state) · Zero `.md` under roots → AC-1/AC-2 (empty list) ·
-  Attached path missing at review time → AC-13 (skip + not-found) · Unsafe/traversing path →
-  AC-14 (refuse) · Total exceeds budget → AC-15/AC-11 (drop remainder + warn) · Duplicate path via
-  agent+skill → AC-12 (dedup first) · Malicious/instruction-bearing doc body → AC-17 (data only) ·
-  No docs attached / all not-found → AC-18 (section omitted) ·
+  Attached path missing at review time → AC-13 (skip + not-found) · Unsafe/traversing path (review
+  time) → AC-14 (refuse) · Total exceeds budget → AC-15/AC-11 (drop remainder + warn) · Duplicate
+  path via agent+skill → AC-12 (dedup first) · Malicious/instruction-bearing doc body → AC-17 (data
+  only) · No docs attached / all not-found → AC-18 (section omitted) ·
   **Single document larger than the whole budget** → AC-15 (dropped whole, never head-truncated;
-  reported over-budget in the trace) · **Attached path present in metadata but absent from the currently-selected repo's
-  clone in the editor** → accepted: the editor shows the stored path as attached (path-only,
-  cross-repo); a "missing in this repo" affordance is a nice-to-have, not required here.
+  reported over-budget in the trace) ·
+  **Single-document content read — unsafe path (`../`, absolute, backslash/NUL, control char)** →
+  AC-22 (404, nothing read) · **content read — non-`.md` path** → AC-22 (404) ·
+  **content read — absent `.md` path** → AC-22 (404) ·
+  **Attached path present in metadata but absent from the currently-selected repo's clone in the
+  editor** → accepted: the editor shows the stored path as attached (path-only, cross-repo); a
+  "missing in this repo" affordance is a nice-to-have, not required here.
+- **Nested configured-root-within-a-configured-root** (e.g. a `docs/` directory inside a `specs/`
+  directory, or `specs/docs/y.md`) → provisionally AC-1 with the **outermost matched root wins,
+  each file listed once** rule (see Open questions — the one remaining plan-level judgment call).
 
 ## Non-functional  — each with a number/level, else parked in Open questions
 - **Performance**: the document-list endpoint shall complete a clone glob for a typical repo
   (≤ ~2000 candidate files) within a p95 of ≤ 500 ms. For repos above ~2000 candidate files the
   bound is **explicitly deferred — parked, to be revisited if/when a >2000-file repo appears**; no
-  numeric guarantee at that scale is made for now.
+  numeric guarantee at that scale is made for now. The single-document content read (AC-22) reads
+  exactly one file on demand (lazy, on selection) — not a per-row eager fetch.
 - **Rate / cost**: zero LLM calls (AC-19); deterministic file reads + tokenizer counts only.
-- **Security**: runtime reads are confined to the clone root (AC-14); document bodies are always
-  untrusted-fenced (AC-16, AC-17); no document text is persisted to the DB (AC-7).
+- **Security**:
+  - Review-time reads are confined to the reviewed clone root (AC-14); document bodies are always
+    untrusted-fenced (AC-16, AC-17); no document text is persisted to the DB (AC-7).
+  - The single-document content read (AC-22) is confined to the **active repo's** clone root by the
+    safe-path guard — control-char-hardened, applied **before** any read; it serves `.md` only;
+    unsafe/non-`.md`/absent → 404 (never 500, never a read outside the clone root); no body is
+    persisted. The read is workspace-scoped so it cannot serve another tenant's clone.
+  - Untrusted bodies rendered on the client (Preview/Edit) go through the safe markdown path
+    (never `dangerouslySetInnerHTML`); path labels render as text, not HTML.
 - **Budget default**: `DEFAULT_PROJECT_CONTEXT_TOKEN_BUDGET = 8000` tokens — the confirmed starting
   value (curated, human-attached context warrants a larger cap than the derived
   `DEFAULT_REPO_MAP_TOKEN_BUDGET = 1500`). Explicitly **tunable** via an env override following the
@@ -204,6 +280,10 @@ plumbing that already exists but is currently unwired.
   off the reviewed clone + `tokenizer.count`]
 - Per-doc + total token counts — [reused: `skills_tokens` tokenizer pattern,
   `run-executor.ts:266`]
+- **Document body preview** — [new: a **lazy** `GET /repos/:repoId/context-docs/content?path=…`
+  read of ONE `.md` off the **active** repo clone; deterministic file read gated by the
+  `isSafeRepoPath` guard; **no persistence**] [reused: `isSafeRepoPath`,
+  `reviews/intent-helpers.ts:108`] — **no LLM calls**.
 - Attachment persistence — [new: additive `context_docs` columns on `agents` and `skills`
   (ordered `string[]` of repo-relative paths)]
 - Trace token volume — [new: additive nullish `specs_tokens` on `RunStats`, mirroring
@@ -216,10 +296,13 @@ file under `specs/`, `docs/`, or `insights/`. They are therefore **untrusted DAT
 `wrapUntrusted()` and governed by `INJECTION_GUARD` (`reviewer-core/src/prompt.ts`), exactly like
 the diff and PR body. Repo-relative **paths** used as `### <path>` labels are likewise
 author-influenced and must be rendered inside (or as) untrusted-safe structure, not as trusted
-instructions. This spec relies on those guards and must not restate or weaken them.
+instructions. The **preview** content read (AC-22) returns the same untrusted body; the client
+renders it through the safe markdown path (Preview) or read-only raw source (Edit), never via
+`dangerouslySetInnerHTML`. This spec relies on those guards and must not restate or weaken them.
 
 ## Diagrams / workflows
-Review-time injection (the cross-module seam):
+
+Review-time injection (the primary cross-module seam):
 
 ```mermaid
 sequenceDiagram
@@ -240,6 +323,22 @@ sequenceDiagram
   RE->>RE: persist RunTrace{ specs_read, stats.specs_tokens, prompt_assembly.specs }
 ```
 
+Preview content read (the new discovery-side seam — AC-6 / AC-22):
+
+```mermaid
+sequenceDiagram
+  participant UI as Project Context page (client)
+  participant RT as project-context routes (server · HTTP)
+  participant SV as project-context service (server · app ring)
+  participant FS as active repo clone (fs, infra)
+  UI->>RT: GET /repos/:repoId/context-docs/content?path=<rel> (on row select)
+  RT->>SV: getContextDocContent(workspaceId, repoId, path)
+  SV->>SV: isSafeRepoPath(path) && .md ? else → 404 (NO read)
+  SV->>FS: read path off clone root (only when the guard passed)
+  FS-->>SV: body | null (absent → 404)
+  SV-->>UI: { path, body } (untrusted; rendered via safe markdown / read-only raw)
+```
+
 ## Contracts touched  (shapes only — no code)
 - **`@devdigest/shared` `contracts/trace.ts`** — `PromptAssembly.specs` (exists, reused);
   `RunTrace.specs_read: string[]` (exists, now populated with injected paths in order);
@@ -252,21 +351,38 @@ sequenceDiagram
   `string[]` (run-executor pre-labels each chunk) or becomes `{ path, body }[]` (reviewer-core
   labels) is a plan decision; the observable in AC-16 must hold either way. Honor the
   omit-when-empty byte-identity contract (AC-18).
-- **New: project-context document listing** — a read model per repo: `docs: [{ path, root
-  (specs|docs|insights), tokens, used_by_agents, used_by_skills? }]`. Owner: server (client only
-  renders it).
-- **New: agent/skill attachment** — `context_docs: string[]` (ordered repo-relative paths) as
-  additive columns on `agents` and `skills`. Read/written by the editors; read at review time.
+- **project-context document listing** (paths-only read model) — a read model per repo: `docs:
+  [{ path, root (specs|docs|insights), tokens, used_by_agents, used_by_skills? }]` plus the config
+  `token_budget`. Owner: server (client only renders it). This listing carries **no bodies**.
+- **New: single-document content read** (`ContextDocContent`) — a **lazy** read model per repo,
+  shape `{ path, body }`, served by `GET /repos/:repoId/context-docs/content?path=<repo-relative>`.
+  Deliberately **separate** from the paths-only listing: bodies are fetched on demand for the
+  preview pane, never as part of the listing. `body` is untrusted author markdown; the client
+  renders it via a safe markdown primitive (Preview) or read-only raw source (Edit). Owner: server
+  (client renders). Confined by the safe-path guard (AC-22); no body is persisted. "Used by N
+  agents" in the preview header is composed from the listing row (AC-4), **not** from this endpoint.
+- **agent/skill attachment** — `context_docs: string[]` (ordered repo-relative paths) as additive
+  columns on `agents` and `skills`. Read/written by the editors; read at review time.
 
 ## Open questions
-(none — all resolved.) The five original open threads (single-doc-over-budget behaviour,
-assembled-block layout, which clone the listing globs, configurable-roots mechanism, and the
-budget default) are resolved by stakeholder decision and folded into AC-1, AC-15, AC-16, the
-edge-case table, and the Non-functional budget entry. The very-large-monorepo (> ~2000 candidate
-files) performance bound is a settled decision to **park it**: the ≤ 500 ms / ≤ 2000-file target
-stands, and any numeric bound at larger scale is deferred until a >2000-file repo actually
-appears.
+- [NEEDS CLARIFICATION: **nested configured-root-within-a-configured-root labelling.** When a
+  directory *named* a configured root sits inside another (e.g. a `docs/` directory under a
+  `specs/` directory, or `specs/docs/y.md`), which root labels the file, and is it listed once? The
+  implementation resolves this as **"the OUTERMOST matched root wins; each file is listed exactly
+  once"** (see `docs/plans/2026-07-17-project-context-addendum.md` §10 Q1). The task's decided
+  AC-1 example only covers non-nested roots, so this is a genuine plan-level judgment call — confirm
+  the outermost-wins-once rule, or specify that the inner root should re-label / produce a duplicate
+  row. AC-1's pinned observable is unaffected either way.]
+- All other v1 threads are resolved. The five original v1 open threads (single-doc-over-budget
+  behaviour, assembled-block layout, which clone the listing globs, configurable-roots mechanism,
+  and the budget default) remain folded into AC-1, AC-15, AC-16, the edge-case table, and the
+  Non-functional budget entry. The very-large-monorepo (> ~2000 candidate files) performance bound
+  is a settled decision to **park it**. The v1→v2 additions (nested-root wording, body preview,
+  content read, nav placement) are stakeholder/design decisions encoded as AC-1, AC-6, AC-22, AC-23,
+  and AC-24; the content-endpoint `.md`-only defense-in-depth is pinned by AC-22, and the Edit-tab
+  read-only behaviour is pinned by AC-23.
 
 ---
-Next step: `implementation-planner(spec=spec/SPEC-01-project-context.md)` once the open questions
-are resolved and the human approves.
+Next step: `implementation-planner(spec=spec/SPEC-01-project-context.md)` once the single open
+thread above is resolved and the human approves. (The already-shipped base plan and its addendum
+implement v1 + these v2 deltas; this spec remains the source of truth they trace back to.)

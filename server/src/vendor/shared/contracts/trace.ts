@@ -72,6 +72,9 @@ export const RunStats = z.object({
   /** Tokens added by the injected skills prompt block; 0 when the agent has no
       enabled+linked skills. Nullish so traces written before skills validate. */
   skills_tokens: z.number().int().nullish(),
+  /** Tokens added by the injected Project-context (specs) prompt block; 0 when no
+      docs were injected. Nullish so traces written before this feature still validate. */
+  specs_tokens: z.number().int().nullish(),
 });
 export type RunStats = z.infer<typeof RunStats>;
 
@@ -90,6 +93,17 @@ export const TraceSkill = z.object({
   body: z.string(),
 });
 export type TraceSkill = z.infer<typeof TraceSkill>;
+
+/**
+ * A repo document that was attached to an agent/skill but NOT injected into this
+ * run's prompt, paired with the reason it was dropped. Powers the run trace's
+ * Project-context audit (whole-doc drop only — never head-truncation).
+ */
+export const SkippedDoc = z.object({
+  path: z.string(),
+  reason: z.enum(['not_found', 'unsafe', 'over_budget']),
+});
+export type SkippedDoc = z.infer<typeof SkippedDoc>;
 
 /** The single-document trace stored in `run_traces.trace`. */
 export const RunTrace = z.object({
@@ -110,6 +124,9 @@ export const RunTrace = z.object({
   raw_output: z.string(),
   memory_pulled: z.array(MemoryPulled),
   specs_read: z.array(z.string()),
+  /** Attached docs dropped before injection (not_found | unsafe | over_budget),
+      in encounter order. Absent when nothing was skipped and on pre-feature traces. */
+  specs_skipped: z.array(SkippedDoc).nullish(),
   log: z.array(RunLogLine),
 });
 export type RunTrace = z.infer<typeof RunTrace>;

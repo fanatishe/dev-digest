@@ -17,6 +17,10 @@ export const skills = pgTable('skills', {
   enabled: boolean('enabled').notNull().default(true),
   version: integer('version').notNull().default(1),
   evidenceFiles: jsonb('evidence_files').$type<string[]>(),
+  // Ordered repo-relative paths of Project-context docs attached to this skill.
+  // Additive/nullable jsonb (no default), same shape as `evidence_files`. Paths
+  // only: document BODIES are never persisted here (SPEC-01 AC-7 / AC-9).
+  contextDocs: jsonb('context_docs').$type<string[]>(),
   createdAt: now(),
 });
 

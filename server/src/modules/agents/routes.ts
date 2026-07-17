@@ -5,6 +5,7 @@ import { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
+import { isSafeRepoPath } from '../reviews/intent-helpers.js';
 import { AgentsService } from './service.js';
 
 /** `/providers/:id` addresses a provider by name, not a uuid. */
@@ -66,6 +67,20 @@ const SetSkillsBody = z
   .refine((b) => b.skill_ids !== undefined || b.skill_id !== undefined, {
     message: 'Provide skill_ids (set/reorder) or skill_id (link one)',
   });
+
+/**
+ * Attach / detach / reorder Project-context docs (ordered repo-relative paths).
+ * Write-time path sanity reuses `isSafeRepoPath` (the SAME pure guard the reader
+ * confines with) so a traversal path (`../../etc/passwd`) is rejected 422 at the
+ * boundary — belt-and-suspenders ahead of the load-bearing read-time guard.
+ */
+const SetContextDocsBody = z.object({
+  context_docs: z
+    .array(z.string())
+    .refine((paths) => paths.every(isSafeRepoPath), {
+      message: 'context_docs must be safe, repo-relative paths',
+    }),
+});
 
 export default async function agentsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
@@ -161,6 +176,17 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
           : await service.linkSkill(workspaceId, req.params.id, body.skill_id!, body.order);
       if (!links) throw new NotFoundError('Agent not found');
       return links;
+    },
+  );
+
+  app.put(
+    '/agents/:id/context-docs',
+    { schema: { params: IdParams, body: SetContextDocsBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const agent = await service.setContextDocs(workspaceId, req.params.id, req.body.context_docs);
+      if (!agent) throw new NotFoundError('Agent not found');
+      return agent;
     },
   );
 

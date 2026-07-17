@@ -56,8 +56,13 @@ export interface ReviewInput {
   skills?: string[];
   /** Curated memory items. */
   memory?: string[];
-  /** Project-context spec chunks (untrusted; delimiter-wrapped downstream). */
-  specs?: string[];
+  /**
+   * Project-context spec chunks (untrusted; delimiter-wrapped downstream). Each
+   * doc is `{ path, body }`: the assembler renders `### <path>` outside the
+   * `<untrusted>` fence and wraps only the body. Empty/whitespace bodies are
+   * dropped; an all-empty set omits the `## Project context` section.
+   */
+  specs?: { path: string; body: string }[];
   /**
    * Optional callers-of-changed-symbols digest (T1.3). Untrusted; rendered
    * before the diff section. Empty/undefined → section omitted.

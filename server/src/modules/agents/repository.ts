@@ -233,4 +233,23 @@ export class AgentsRepository {
       .insert(t.agentSkills)
       .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
   }
+
+  /**
+   * Replace the agent's attached Project-context docs with `paths` (ordered).
+   * Like `setSkills` (and UNLIKE `update`) this does NOT bump the config version —
+   * attaching docs is a link operation, not a prompt edit. Workspace-scoped so it
+   * can never write across tenants; returns undefined when the agent isn't found.
+   */
+  async setContextDocs(
+    workspaceId: string,
+    id: string,
+    paths: string[],
+  ): Promise<AgentRow | undefined> {
+    const [row] = await this.db
+      .update(t.agents)
+      .set({ contextDocs: paths })
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
+      .returning();
+    return row;
+  }
 }

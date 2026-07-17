@@ -145,6 +145,21 @@ export class SkillsService {
     return row ? toSkillDto(row) : undefined;
   }
 
+  /**
+   * Replace the skill's attached Project-context docs with an ordered path list
+   * (attach / detach / reorder collapse to "set the list"). Workspace-scoped:
+   * undefined when the skill isn't in this workspace (route → 404). Persists
+   * PATHS only — no document text is ever written (AC-7 / AC-9).
+   */
+  async setContextDocs(
+    workspaceId: string,
+    id: string,
+    paths: string[],
+  ): Promise<Skill | undefined> {
+    const row = await this.repo.setContextDocs(workspaceId, id, paths);
+    return row ? toSkillDto(row) : undefined;
+  }
+
   /** Usage stats (agents linking this skill). Undefined when not in workspace. */
   async stats(workspaceId: string, skillId: string): Promise<SkillStats | undefined> {
     const skill = await this.repo.getById(workspaceId, skillId);

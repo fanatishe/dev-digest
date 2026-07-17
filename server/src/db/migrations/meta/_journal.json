@@ -106,6 +106,13 @@
       "when": 1783901614074,
       "tag": "0014_lame_sunset_bain",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784251476602,
+      "tag": "0015_sweet_stellaris",
+      "breakpoints": true
     }
   ]
 }

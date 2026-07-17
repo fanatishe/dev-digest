@@ -1,0 +1,60 @@
+{
+  "page": {
+    "title": "Project Context",
+    "subtitle": "Markdown under the configured roots (specs, docs, insights) that agents and skills can attach as review context.",
+    "count": "{count, plural, one {# document} other {# documents}}"
+  },
+  "filter": {
+    "placeholder": "Filter documents…",
+    "ariaLabel": "Filter documents by path"
+  },
+  "row": {
+    "tokens": "{tokens} tokens",
+    "usedByAgents": "Used by {count, plural, one {# agent} other {# agents}}"
+  },
+  "empty": {
+    "title": "No project-context documents",
+    "body": "No .md files were found under the configured roots for this repo. Clone or index the repo, then reload."
+  },
+  "noRepo": {
+    "title": "No repository selected",
+    "body": "Select a repository to browse its project-context documents."
+  },
+  "error": {
+    "title": "Could not load documents",
+    "body": "The engine could not list this repository's project-context documents."
+  },
+  "preview": {
+    "placeholder": "Select a document from the list to preview its content.",
+    "tabPreview": "Preview",
+    "tabEdit": "Edit",
+    "tabsAriaLabel": "Preview or raw source",
+    "editAriaLabel": "Raw markdown source (read-only)",
+    "editNote": "Read-only raw source. Project-context documents are attached from an agent or skill's Context tab, not edited here.",
+    "loadError": "Could not load this document's content.",
+    "emptyBody": "This document is empty."
+  },
+  "tab": {
+    "title": "Context",
+    "heading": "Project context",
+    "hint": "Attach repo docs to inject as untrusted ## Project context. Drag to set the injection order.",
+    "count": "{enabled} of {total} attached",
+    "linkedHeading": "Attached",
+    "availableHeading": "Available",
+    "empty": "No project-context documents were found for the active repo.",
+    "noRepo": "Select a repository to attach project-context documents.",
+    "total": "≈ {tokens} tokens",
+    "injectionLabel": "injected as untrusted ## Project context",
+    "budget": "{tokens} of {budget} token budget",
+    "overBudget": "Over budget: {tokens} of {budget} tokens. Documents past the budget are dropped whole at review time."
+  },
+  "trace": {
+    "specsTokens": "PROJECT CTX",
+    "skippedTitle": "Project-context — skipped documents",
+    "skippedReason": {
+      "not_found": "not found in the reviewed clone",
+      "unsafe": "unsafe path (refused)",
+      "over_budget": "over token budget"
+    }
+  }
+}

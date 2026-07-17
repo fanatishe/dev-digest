@@ -156,6 +156,21 @@ export class AgentsService {
     return this.skillLinks(agentId);
   }
 
+  /**
+   * Replace the agent's attached Project-context docs with an ordered path list
+   * (attach / detach / reorder collapse to "set the list"). Workspace-scoped
+   * ownership: returns undefined when the agent isn't in this workspace (route →
+   * 404). Persists PATHS only — no document text is ever written (AC-7).
+   */
+  async setContextDocs(
+    workspaceId: string,
+    id: string,
+    paths: string[],
+  ): Promise<Agent | undefined> {
+    const row = await this.repo.setContextDocs(workspaceId, id, paths);
+    return row ? toAgentDto(row) : undefined;
+  }
+
   /** Link a single skill (append or set order) — additive to existing links. */
   async linkSkill(
     workspaceId: string,

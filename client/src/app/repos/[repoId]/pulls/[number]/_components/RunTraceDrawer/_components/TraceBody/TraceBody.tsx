@@ -18,7 +18,12 @@ import { Row, Stat } from "../atoms";
 
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
   const t = useTranslations("runs");
+  // Project-context (SPEC-01) trace strings live in this WP's own `projectContext`
+  // namespace, not the shared `runs.json`. Every access below is nullish-guarded so
+  // pre-feature traces (and tests that don't provide the namespace) render nothing.
+  const tp = useTranslations("projectContext");
   const stats = trace.stats;
+  const skipped = trace.specs_skipped ?? [];
   return (
     <>
       <TraceSection icon="Settings" title={t("trace.configuration")}>
@@ -49,6 +54,17 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
               )}
             </div>
           </Row>
+          {skipped.length > 0 && (
+            <Row label={tp("trace.skippedTitle")}>
+              <div style={s.specsWrap}>
+                {skipped.map((sk, i) => (
+                  <span key={`${sk.path}-${i}`} className="mono" style={s.spec}>
+                    {sk.path} · {tp(`trace.skippedReason.${sk.reason}`)}
+                  </span>
+                ))}
+              </div>
+            </Row>
+          )}
         </div>
       </TraceSection>
 
@@ -66,6 +82,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           <Stat label={t("trace.stat.tokens")} val={formatTokens(stats.tokens_in, stats.tokens_out)} />
           <Stat label={t("trace.stat.cost")} val={formatCost(stats.cost_usd)} />
           <Stat label={t("trace.stat.findings")} val={stats.findings} />
+          {stats.specs_tokens != null && <Stat label={tp("trace.specsTokens")} val={stats.specs_tokens} />}
         </div>
       </TraceSection>
 

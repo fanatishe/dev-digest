@@ -17,3 +17,4 @@ link line below. Retros are **not committed by the skill**; they are left in the
 <!-- workflow-retro appends one line per retro here: `- [<date> — <what the run was>](<file>.md)` -->
 
 - [2026-07-17 — spec-creator authoring SPEC-01-project-context (3 dispatches, fully serial)](2026-07-17-spec-creator-run.md)
+- [2026-07-17 — SDD build of Project Context (SPEC-01): 23 agents, base plan + addendum + design corrections](2026-07-17-project-context-sdd-build.md)

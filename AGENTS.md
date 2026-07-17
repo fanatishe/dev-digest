@@ -69,4 +69,5 @@ Knowledge compounds per module via `<module>/INSIGHTS.md`. See
 - Running the SDD pipeline (spec → plan → build → verify → gate) → `docs/sdd-workflow.md`
 - Working on tests or CI → `TESTING.md` (one suite per package, path-filtered)
 - Writing/editing a reviewer agent prompt → `docs/agent-prompts/README.md`
+- Reviewing a past multi-agent run (cost/topology/waste) → `docs/retros/` (`workflow-retro` skill)
 - Anything module-specific → that module's `CLAUDE.md` (then its `docs/`/`specs/`)

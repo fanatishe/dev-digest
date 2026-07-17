@@ -24,6 +24,13 @@
     "empty": "No intent derived yet.",
     "emptyHint": "Derive the scope of this PR from its title, description, branch, commits and changed files."
   },
+  "riskBrief": {
+    "count": "{count, plural, one {# risk} other {# risks}}",
+    "emptyHint": "Run a review to surface where the risk is and what to read first.",
+    "fallback": "From the intent classifier (metadata only):",
+    "reviewFocus": "Review focus — read these first",
+    "focusCount": "{count} to read"
+  },
   "blast": {
     "empty": "Blast radius is not available yet."
   },

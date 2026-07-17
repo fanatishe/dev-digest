@@ -102,7 +102,12 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 log "starting API on :3001 (server)"
-(cd server && pnpm dev) &
+# The API's Node process must reach api.github.com for GitHub PR sync. On hosts
+# with broken IPv6 egress, Node stalls on the IPv6 address until the 30s timeout
+# (curl falls back to IPv4; Node does not) and PR sync silently returns empty.
+# Force IPv4-first DNS ordering so the working route is used. Caller NODE_OPTIONS
+# is preserved (empty when unset under `set -u`).
+(cd server && NODE_OPTIONS="--dns-result-order=ipv4first ${NODE_OPTIONS:-}" pnpm dev) &
 SERVER_PID=$!
 
 if [ "$RUN_CLIENT" -eq 1 ]; then

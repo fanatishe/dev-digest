@@ -6,9 +6,9 @@ import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
 import { REVIEW_STRATEGY } from './constants.js';
-import { taskLine } from './helpers.js';
+import { taskLine, resolveContextDocPaths, planContextInjection, type DocReadResult } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
-import { renderIntentBlock, isStale } from './intent-helpers.js';
+import { renderIntentBlock, isStale, isSafeRepoPath } from './intent-helpers.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -225,6 +225,48 @@ export class ReviewRunExecutor {
         runLog.info(`Skills: ${skillBodies.length} skill(s) attached to prompt`);
       }
 
+      // Project context — repo markdown the user attached to this agent and/or its
+      // enabled+linked skills (agent first, then skills in link order; deduped,
+      // first-occurrence wins). Injected at review time as the untrusted
+      // `## Project context` slot. Read off the REVIEWED PR's OWN clone by
+      // `pull.repoId` — a path-only, cross-repo read.
+      //
+      // SECURITY (AC-14): `repoIntel.getFileContent` → `readClone` does a bare
+      // `join(clonePath, path)` with NO confinement of its own, so `isSafeRepoPath`
+      // is the ONLY thing between an attached `../../etc/passwd` and the
+      // filesystem. NEVER read before the guard passes.
+      const contextDocPaths = resolveContextDocPaths(
+        agent.contextDocs,
+        enabledSkills.map((s) => s.contextDocs),
+      );
+      const reads: DocReadResult[] = [];
+      for (const path of contextDocPaths) {
+        if (!isSafeRepoPath(path)) {
+          reads.push({ path, status: 'unsafe' });
+          continue;
+        }
+        const body = await this.container.repoIntel.getFileContent(pull.repoId, path);
+        if (body === null) {
+          runLog.info(`Project context: "${path}" not found in the clone — skipped`);
+          reads.push({ path, status: 'not_found' });
+          continue;
+        }
+        reads.push({ path, status: 'ok', body, tokens: this.container.tokenizer.count(body) });
+      }
+      const budget = this.container.config.projectContextTokenBudget;
+      const { accepted: specDocs, skipped: skippedDocs } = planContextInjection(reads, budget);
+      const overBudgetCount = skippedDocs.filter((d) => d.reason === 'over_budget').length;
+      if (overBudgetCount > 0) {
+        // No `warn` event kind exists on the run bus; a budget drop is surfaced as
+        // an info line (same posture as the intent "stale — injecting anyway" note).
+        runLog.info(
+          `Project context: token budget (${budget}) reached — dropped ${overBudgetCount} doc(s) whole (over budget, not truncated)`,
+        );
+      }
+      if (specDocs.length > 0) {
+        runLog.info(`Project context: ${specDocs.length} doc(s) injected into the prompt`);
+      }
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -239,6 +281,11 @@ export class ReviewRunExecutor {
         strategy: agent.strategy ?? REVIEW_STRATEGY,
         // Skills — enabled+linked skill bodies, in order. Omitted when empty.
         ...(skillBodies.length > 0 ? { skills: skillBodies } : {}),
+        // Project context — attached repo docs as `{ path, body }[]`. reviewer-core
+        // renders the `### <path>` header outside the fence and wraps each body in
+        // `<untrusted>`. Omitted when nothing was accepted → byte-identical prompt
+        // (AC-18). This introduces NO new model call (AC-19).
+        ...(specDocs.length > 0 ? { specs: specDocs } : {}),
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
@@ -267,6 +314,14 @@ export class ReviewRunExecutor {
         ? this.container.tokenizer.count(outcome.assembly.skills)
         : 0;
       if (skillsTokens > 0) runLog.info(`Skills block added ~${skillsTokens} tokens to the prompt`);
+
+      // Attribute the tokens the Project-context block added — the token sum of the
+      // rendered `## Project context` slot (mirrors the skills attribution above).
+      // `assembly.specs` is null when nothing was injected, so this is 0 then.
+      const specsTokens = outcome.assembly.specs
+        ? this.container.tokenizer.count(outcome.assembly.specs)
+        : 0;
+      if (specsTokens > 0) runLog.info(`Project context block added ~${specsTokens} tokens to the prompt`);
 
       const keptFindings = outcome.review.findings;
 
@@ -340,6 +395,7 @@ export class ReviewRunExecutor {
           findings: findingRows.length,
           grounding,
           skills_tokens: skillsTokens,
+          specs_tokens: specsTokens,
         },
         prompt_assembly: outcome.assembly,
         tool_calls: outcome.chunks.map((c) => ({
@@ -350,7 +406,10 @@ export class ReviewRunExecutor {
         })),
         raw_output: outcome.raw,
         memory_pulled: [],
-        specs_read: [],
+        // Which attached docs were actually injected (in injection order), and the
+        // audit trail of those dropped before injection with the reason.
+        specs_read: specDocs.map((d) => d.path),
+        ...(skippedDocs.length > 0 ? { specs_skipped: skippedDocs } : {}),
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),

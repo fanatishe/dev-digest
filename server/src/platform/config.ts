@@ -12,6 +12,15 @@ import { join, isAbsolute, resolve } from 'node:path';
  * that reads process.env directly (see adapters/secrets/local.ts). Listing them
  * here would be dead config that never reaches AppConfig.
  */
+/**
+ * Repo roots scanned for attachable Project-context markdown (`.md`), in scan
+ * order. Named const (mirrors how the repo-map budget is a named const) so the
+ * default is not a call-site literal.
+ */
+export const DEFAULT_PROJECT_CONTEXT_ROOTS = ['specs', 'docs', 'insights'];
+/** Default token budget for the injected Project-context block (AC-11 / AC-15). */
+export const DEFAULT_PROJECT_CONTEXT_TOKEN_BUDGET = 8000;
+
 const EnvSchema = z.object({
   DATABASE_URL: z
     .string()
@@ -29,6 +38,12 @@ const EnvSchema = z.object({
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
+  // Project-context discovery: which repo roots are scanned for attachable `.md`
+  // (comma-separated; default specs,docs,insights) and the token budget for the
+  // injected Project-context block. Both optional — empty falls through to the
+  // named defaults below (same shape as DEVDIGEST_CLONE_DIR: parse env → default).
+  DEVDIGEST_PROJECT_CONTEXT_ROOTS: z.string().optional(),
+  DEVDIGEST_PROJECT_CONTEXT_TOKEN_BUDGET: z.coerce.number().int().positive().optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   // `.env` (and .env.example) ship `LOG_LEVEL=` empty; an empty string is not a
   // valid enum member, so coerce '' → undefined to fall through to the default.
@@ -59,6 +74,10 @@ export type AppConfig = {
    * EXACTLY like the ripgrep-only baseline.
    */
   repoIntelEnabled: boolean;
+  /** Repo roots scanned for attachable Project-context markdown (.md), in order. */
+  projectContextRoots: string[];
+  /** Token budget for the injected Project-context block (AC-11 / AC-15). */
+  projectContextTokenBudget: number;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -66,6 +85,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const cloneDirRaw =
     parsed.DEVDIGEST_CLONE_DIR ?? join(homedir(), '.devdigest', 'workspace');
   const cloneDir = isAbsolute(cloneDirRaw) ? cloneDirRaw : resolve(process.cwd(), cloneDirRaw);
+  const rootsFromEnv = (parsed.DEVDIGEST_PROJECT_CONTEXT_ROOTS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const projectContextRoots =
+    rootsFromEnv.length > 0 ? rootsFromEnv : [...DEFAULT_PROJECT_CONTEXT_ROOTS];
   return {
     databaseUrl: parsed.DATABASE_URL,
     apiPort: parsed.API_PORT,
@@ -77,5 +102,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     webOrigin: `http://localhost:${parsed.WEB_PORT}`,
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
+    projectContextRoots,
+    projectContextTokenBudget:
+      parsed.DEVDIGEST_PROJECT_CONTEXT_TOKEN_BUDGET ?? DEFAULT_PROJECT_CONTEXT_TOKEN_BUDGET,
   };
 }

@@ -17,7 +17,7 @@ import { filterSkills } from "./helpers";
 import { s } from "./styles";
 
 type ImportTab = "file" | "url" | "community";
-const VALID_TABS = ["config", "preview", "evals", "stats", "versions"];
+const VALID_TABS = ["config", "preview", "context", "evals", "stats", "versions"];
 
 export function SkillsWorkbench({ id }: { id?: string }) {
   const t = useTranslations("skills");

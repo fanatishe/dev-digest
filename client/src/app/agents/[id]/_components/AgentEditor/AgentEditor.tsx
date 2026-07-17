@@ -7,14 +7,24 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Tabs } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
+import { useActiveRepo } from "@/lib/repo-context";
 import { ConfigTab } from "./_components/ConfigTab";
 import { SkillsTab } from "./_components/SkillsTab";
+import { ContextTab } from "./_components/ContextTab";
 import { TABS } from "./constants";
 import { s } from "./styles";
 
 export function AgentEditor({ agent, tab, onTab }: { agent: Agent; tab: string; onTab: (t: string) => void }) {
   const t = useTranslations("agents");
-  const tabs = TABS.map((tb) => ({ key: tb.key, label: t(tb.labelKey), icon: tb.icon }));
+  const tp = useTranslations("projectContext");
+  const { repoId } = useActiveRepo();
+  // The Context tab's label lives in the `projectContext` namespace (this WP owns
+  // that file, not the shared `agents.json`).
+  const tabs = TABS.map((tb) => ({
+    key: tb.key,
+    label: tb.key === "context" ? tp("tab.title") : t(tb.labelKey),
+    icon: tb.icon,
+  }));
   return (
     <div style={s.wrap}>
       <div style={s.tabsBar}>
@@ -23,6 +33,8 @@ export function AgentEditor({ agent, tab, onTab }: { agent: Agent; tab: string; 
       <div style={s.body}>
         {tab === "skills" ? (
           <SkillsTab key={agent.id} agentId={agent.id} />
+        ) : tab === "context" ? (
+          <ContextTab key={agent.id} agentId={agent.id} repoId={repoId} />
         ) : (
           <ConfigTab key={agent.id} agent={agent} />
         )}

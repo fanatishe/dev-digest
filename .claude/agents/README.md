@@ -15,30 +15,35 @@ team via version control.
 | Understand | [researcher](researcher.md) | no | sonnet | The **public web** — library docs, changelogs, API behaviour, versions. Reads primary sources, not snippets; checks them against the version we actually pin. A citation per claim, and an explicit list of what it could **not** find |
 | Understand | [investigator](investigator.md) | no | opus | **This codebase.** Four modes: `locate` · `trace` (the call chain) · `impact` (**what breaks if I change this**) · `history` (why it came to be). Ships a Mermaid diagram. Knows the repo's search traps — `server/clones/**` is a stale copy of the whole tree, the contracts are vendored **twice**, imports go through tsconfig aliases |
 | Explore | [brainstorm](brainstorm.md) | no | opus | **Best-of-N, before anything is planned.** Generates variants that must differ along a **declared axis** (not just in wording), grounds each in the files it would touch, **disqualifies** the ones breaking a hard repo rule, scores them on stated weights, and recommends one + the best idea to graft from the runner-up. Variant 0 is always *"extend what exists"* |
-| Plan | [planner](planner.md) | `docs/plans/**` only | opus | Writes a **Development Plan** — work packages with **disjoint file ownership**, so implementers can run in parallel. Plans only; never edits product source |
-| Build | [implementer](implementer.md) | its work package's `Owns` paths only | opus | Executes **one** work package from a plan. Its `Surface:` selects a closed skill set (backend or frontend); **all** of that set must be applied, none outside it. Gated on typecheck + tests + `pr-self-review` |
-| Build | [test-writer](test-writer.md) | **test paths only** — `*/test/**`, `**/*.test.ts(x)`, `e2e/specs/*.flow.json` | opus | Picks the test **level** from the seam (unit · `.it.test.ts` · RTL · e2e flow), writes the test, runs the lane, pastes the real tail. **Never edits product source** — a test that fails because the code is buggy is reported as a Finding and `BLOCKED_SOURCE_BUG`; the red test stays in the tree |
+| Specify | [spec-creator](spec-creator.md) | `<module>/specs/**` and top-level `spec/**` only | opus | Grounds itself in the real designs, **hunts them for gaps** (missing states, edge cases, cross-module seams, UX holes), then writes a **feature spec** in **EARS** — every AC atomic, testable, carrying an `_(observable: …)_` and traced to a user story. Blocking questions come back as `CLARIFICATION_NEEDED`; smaller ones stay inline as `[NEEDS CLARIFICATION]`. Behaviour, contracts and diagrams only — **never code, never a build plan**. Hands off to `implementation-planner` |
+| Plan | [implementation-planner](implementation-planner.md) | `docs/plans/**` only | opus | Reviews the requirements, flags what's unclear, and recommends a better approach; then writes an **Implementation Plan** — **multi-agent** (parallel work packages with **disjoint file ownership**) or **single-agent** (one linear task list), whichever you pick. Plans only; **never writes specs**, never edits product source |
+| Build | [implementer](implementer.md) | its work package's `Owns` paths only | opus | Executes **one** work package from a plan. Its `Surface:` selects a closed skill set (backend or frontend); **all** of that set must be applied, none outside it. Writes **the AC-traceable tests the plan names** (`WP*.T*`) — broader coverage is `test-writer`'s. Gated on typecheck + tests + `pr-self-review` |
+| Build | [test-writer](test-writer.md) | **test paths only** — `*/test/**`, `**/*.test.ts(x)`, `e2e/specs/*.flow.json` | opus | Picks the test **level** from the seam (unit · `.it.test.ts` · RTL · e2e flow), writes the test, runs the lane, pastes the real tail. Writes **the tests the plan did NOT name** — the adversarial edge, the seam, a bug turned into a repro; not the implementer's AC tests. **Never edits product source** — a test that fails because the code is buggy is reported as a Finding and `BLOCKED_SOURCE_BUG`; the red test stays in the tree |
 | Verify | [architecture-reviewer](architecture-reviewer.md) | no | opus | Runs the shipped dependency-cruiser onion ruleset (**partitioning the known baseline**), then judges structure against the architecture skills. Advisory findings in the repo's `Finding`/`Verdict` contract. Reviews **structure, not lines** |
-| Verify | [plan-verifier](plan-verifier.md) | no | opus | Traces **every** acceptance criterion in a plan — **or every invariant in a `specs/*.md`** — to evidence: `file:line` + a verbatim quote, a named test, or a re-run command → `DONE｜PARTIAL｜MISSING｜NOT_VERIFIABLE`, then one overall **PASS/FAIL**. Never fixes; never takes an implementer's report as evidence |
+| Verify | [plan-verifier](plan-verifier.md) | no | sonnet | Traces **every** acceptance criterion in a plan — **or every invariant/`AC-N` in a `specs/*.md`** — to evidence: `file:line` + a verbatim quote, a named test, or a re-run command → `DONE｜PARTIAL｜MISSING｜NOT_VERIFIABLE`, then one overall **PASS/FAIL**. Run **twice**: `source=plan` (built the plan?) then `source=spec` (built what was asked?). Never fixes; never takes an implementer's report as evidence. Sonnet — a mechanical evidence-matcher, kept incorruptible by having no skills, not by model tier |
 | Record | [doc-writer](doc-writer.md) | `docs/**` (not `docs/plans/**`) and `<module>/docs/**` | sonnet | Turns a landed feature, a plan, or notes into a grounded design doc with Mermaid diagrams, and links it from its index. Refuses to invent a rationale the codebase does not record |
 | Record | [insights-curator](insights-curator.md) | **no** | opus | Audits `INSIGHTS.md` against its own rubric and proposes a changeset: `KEEP｜CONTRADICTED｜DUPLICATE｜STALE｜GRADUATED｜BANAL｜MISPLACED`. Its highest-value catch is **`CONTRADICTED`** — a rule a later session reversed, still being served as high-confidence guidance. Hands doc moves to `doc-writer` and INSIGHTS edits to the orchestrator |
 
 ## The write map
 
-With seven agents on one working tree, **disjoint write surfaces are the whole safety story.**
+With eleven agents on one working tree, **disjoint write surfaces are the whole safety story.**
 This is the repo's own `Owns` rule, lifted to the agent roster.
 
 | Path | The only agent that may write it |
 |---|---|
 | `server/src/**`, `client/src/**`, `reviewer-core/src/**` (non-test) | `implementer` |
 | `*/test/**`, `**/*.test.ts(x)`, `e2e/specs/*.flow.json` | `test-writer` |
-| `docs/plans/**` | `planner` |
+| `docs/plans/**` | `implementation-planner` |
 | `docs/**` (everything else), `<module>/docs/**` | `doc-writer` |
-| `AGENTS.md` · `CLAUDE.md` · `INSIGHTS.md` · `specs/**` · package `README.md` | **no agent** — a human, or the orchestrating session via `/engineering-insights` |
+| `server/specs/**` · `client/specs/**` · `reviewer-core/specs/**` · `mcp/specs/**` · top-level `spec/**` | `spec-creator` |
+| `e2e/specs/*.flow.json` | `test-writer` (deterministic flows — **not** prose specs) |
+| `AGENTS.md` · `CLAUDE.md` · `INSIGHTS.md` · a `specs/README.md` index · package `README.md` | **no agent** — a human, or the orchestrating session via `/engineering-insights` |
 
-**Five of the ten write nothing at all**: `researcher`, `investigator`, `brainstorm`,
+**Six of the eleven write nothing at all**: `researcher`, `investigator`, `brainstorm`,
 `architecture-reviewer`, `plan-verifier`, `insights-curator`. Read-only is the default here, not
-the exception — an agent gets `Write` only when producing an artifact *is* the job.
+the exception — an agent gets `Write` only when producing an artifact *is* the job. The five
+writers each own a disjoint surface: `implementer` → source, `test-writer` → tests,
+`implementation-planner` → `docs/plans`, `doc-writer` → `docs`, `spec-creator` → `specs`.
 
 `insights-curator` is the interesting case: it exists to fix `INSIGHTS.md`, and it still may not
 write it. It emits a **proposed changeset**, and the two halves go to their real owners — the
@@ -48,10 +53,20 @@ with no `Write` tool, the violation is structurally impossible rather than merel
 
 ### The flow
 
+The authoritative, step-by-step version of this — with the read-only-vs-writer race rule, the
+failure loop-backs, and when to skip a phase — is the runbook at
+[`../../docs/sdd-workflow.md`](../../docs/sdd-workflow.md). The diagram below is the map; the
+runbook is the procedure.
+
 ```
         brainstorm ──▶ N variants, scored ──▶ one recommendation   (before anything is planned)
              │
-you ──▶ planner ──▶ docs/plans/<date>-<slug>.md   (WP0 + WP1..WPn, disjoint Owns)
+        spec-creator ──▶ <module>/specs/SPEC-NN-<slug>.md   (EARS ACs + observables + boundaries;
+             │                                               cross-module → top-level spec/)
+             │            blocking Qs ⇒ CLARIFICATION_NEEDED (relayed) · smaller ⇒ [NEEDS CLARIFICATION]
+             │
+you ──▶ implementation-planner ──▶ docs/plans/<date>-<slug>.md   (multi-agent: WP0 + WP1..WPn, disjoint Owns
+                                                                 · single-agent: one ordered task list)
                           │
         implementer(WP0)  — serial: contracts, migration, wiring
                           │           ↓ those paths are now LOCKED
@@ -62,11 +77,13 @@ you ──▶ planner ──▶ docs/plans/<date>-<slug>.md   (WP0 + WP1..WPn, d
                           ├──▶ test-writer   — tests only; a red test caused by buggy
                           │                    source ⇒ BLOCKED, never "fixed"
                           │
-        ── verify (read-only, parallel) ──────────────────────────────────────
+        ── verify (read-only, parallel — after all writes settle) ────────────
                           ├──▶ architecture-reviewer   (depcruise + structure)
-                          └──▶ plan-verifier           (criteria → evidence → PASS/FAIL)
+                          └──▶ plan-verifier(source=plan)   (plan criteria → evidence → PASS/FAIL)
                           │
-                          ├──▶ pr-self-review   ← THE GATE. the only BLOCKing check
+                          ├──▶ plan-verifier(source=spec)   ← ACCEPTANCE: the spec's AC-N → evidence
+                          │
+                          ├──▶ pr-self-review (full branch)   ← THE GATE. the only BLOCKing check
                           │
                           ├──▶ doc-writer    — docs/** and <module>/docs/** only
                           └──▶ insights-curator — proposes; doc-writer + the orchestrator apply
@@ -93,10 +110,10 @@ this repo already had. Each design decision below traces to a source.
 
 | What it says | How this repo's agents use it | Source |
 |---|---|---|
-| **`AskUserQuestion` is never available to a subagent**, regardless of the `tools` field | Neither agent can interview you. Both return a `CLARIFICATION_NEEDED` block and stop — the pattern `researcher.md` already used | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
-| A subagent starts with a **fresh, isolated context** — no conversation history, no files already read | The plan artifact must be **self-contained**. The planner's prompt states it outright: *"If a fact is not in the plan, it does not exist"* | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
-| **`skills:` preloads a skill's full text** into the subagent at startup (a preload field, not access control). A skill setting `disable-model-invocation` cannot be preloaded | `implementer` preloads all 11 domain skills; `planner` preloads the same 11 (so it plans against the rules the implementer is held to) plus `mermaid-diagram` and `engineering-insights`. None of the 13 set `disable-model-invocation` | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
-| `tools` is an **allowlist**; omitting it inherits everything | Both declare an explicit, minimal list. `planner` has **no `Edit`**, and may only `Write` under `docs/plans/**` | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
+| **`AskUserQuestion` is never available to a subagent**, regardless of the `tools` field | No agent can interview you mid-run. They surface questions in a returned block and stop — `researcher`/`plan-verifier`/`spec-creator` use `CLARIFICATION_NEEDED`; `implementation-planner` uses `REQUIREMENTS_NEEDED`, which the orchestrating session relays back and re-invokes with the answers. `spec-creator` splits it two ways: blocking unknowns come back in the `CLARIFICATION_NEEDED` block, smaller ones stay in the written file as `[NEEDS CLARIFICATION]` markers | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
+| A subagent starts with a **fresh, isolated context** — no conversation history, no files already read | The plan artifact must be **self-contained**. The implementation-planner's prompt states it outright: *"If a fact is not in the plan, it does not exist"* | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
+| **`skills:` preloads a skill's full text** into the subagent at startup (a preload field, not access control). A skill setting `disable-model-invocation` cannot be preloaded | `implementer` preloads all 11 domain skills (its closed set is a floor+ceiling). `implementation-planner` preloads only the **cross-cutting** ones (`onion-architecture`, `zod`, `typescript-expert`, `security`, `mermaid-diagram`, `engineering-insights`) and **invokes the seven by-artifact skills on demand** via the `Skill` tool — it still plans against the full rule set, but does not pay for the persistence/framework corpus on a single-surface change. None set `disable-model-invocation` | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
+| `tools` is an **allowlist**; omitting it inherits everything | Both declare an explicit, minimal list. `implementation-planner` has **no `Edit`**, and may only `Write` under `docs/plans/**` | [sub-agents](https://code.claude.com/docs/en/sub-agents) |
 | **`description` is the routing signal** — write it third-person and specific, with trigger terms | Both descriptions are third-person and say *when* to use the agent | [agent-skills best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) |
 | Emphasis (`IMPORTANT`, `YOU MUST`) is an endorsed tuning lever — but **prose is advisory; hooks and gates are deterministic** | The skill rules use `YOU MUST` phrasing, but enforcement does **not** rest on prose: it rests on the `pr-self-review` gate and a mandatory skill-coverage table where every skip must be justified | [skills](https://code.claude.com/docs/en/skills) |
 
@@ -107,8 +124,8 @@ this repo already had. Each design decision below traces to a source.
 | **"Two teammates editing the same file leads to overwrites. Break the work so each teammate owns a different set of files."** | The single most load-bearing rule here. Every work package declares **`Owns`** globs, disjoint from every other WP; the plan assigns each contention file to exactly one WP | [agent-teams](https://code.claude.com/docs/en/agent-teams) |
 | Give each parallel agent **an objective, an output format, tool guidance, and clear task boundaries** — without them, *"agents duplicate work, leave gaps"* | The shape of a work package: Surface · Owns · Must-not-touch · skill set · acceptance criteria | [multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) |
 | **"Claude stops when the work looks done. Without a check it can run, 'looks done' is the only signal available."** | `implementer` may not report `DONE` until typecheck, the package's tests, and `pr-self-review` all pass — and must paste the real output, not paraphrase a failure as a pass | [best practices](https://code.claude.com/docs/en/best-practices) |
-| Good specs **name the files and interfaces, state what is out of scope, and end with an end-to-end verification step** | Sections 2 (Non-goals), 4–5 (contracts/DB, verbatim), 6 (files per WP) and 9 (runnable verification) of the plan template | [best practices](https://code.claude.com/docs/en/best-practices) |
-| Explore → Plan → Implement → Commit; a fresh-context reviewer judges the diff against the plan, not against the reasoning that produced it | The planner/implementer split *is* this, with `pr-self-review` as the fresh-context reviewer | [best practices](https://code.claude.com/docs/en/best-practices) |
+| Good specs **name the files and interfaces, state what is out of scope, and end with an end-to-end verification step** | Sections 2 (Non-goals), 4–5 (contracts/DB, verbatim), 6 (files per WP) and 9 (runnable verification) of the multi-agent plan template | [best practices](https://code.claude.com/docs/en/best-practices) |
+| Explore → Plan → Implement → Commit; a fresh-context reviewer judges the diff against the plan, not against the reasoning that produced it | The implementation-planner/implementer split *is* this, with `pr-self-review` as the fresh-context reviewer | [best practices](https://code.claude.com/docs/en/best-practices) |
 | Subagents should return **condensed, structured summaries**, not raw exploration | Both agents have rigid output templates and start at their first heading — no preamble | [context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) |
 | Aim for the **"right altitude"** — specific enough to guide, flexible enough not to be brittle | The agent bodies **link** to `AGENTS.md` / `docs/` / `INSIGHTS.md` rather than duplicating them, which would go stale | [context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) |
 | *"Have one Claude write tests, then another write code to pass them"* — and scope the ask: *"write a test for foo.py covering the edge case where the user is logged out. **avoid mocks**"* | The `implementer` / `test-writer` split, and `test-writer`'s explicit mock-boundary rule | [best practices](https://code.claude.com/docs/en/best-practices) |
@@ -158,9 +175,11 @@ Two things the research **did not** support, recorded so nobody re-litigates the
 Contracts, the DB migration, and the two genuinely shared wiring files
 (`server/src/modules/index.ts`, `server/src/platform/container.ts`) are exactly where
 parallel implementers collide — **every new server module must register in both**. So the
-planner hoists them into a serial **`WP0 — Foundation`** that lands first; those paths are
+implementation-planner hoists them into a serial **`WP0 — Foundation`** that lands first; those paths are
 then **LOCKED**, and the implementers fan out against a stable contract and a migrated DB. An
-implementer that needs a LOCKED file reports `BLOCKED` rather than editing it.
+implementer that needs a LOCKED file reports `BLOCKED` rather than editing it. (In single-agent
+mode there is only one implementer, so there is no contention and no WP0 — the step *order*
+carries the same contract-first, migrate-first discipline.)
 
 Without this, file ownership breaks the first time two work packages both add a module. No
 published guidance covers it — it falls out of this repo's static module registry and its

@@ -131,6 +131,9 @@ export const Skill = z.object({
   // Number of agents this skill is linked to. Nullish/additive: populated by the
   // list endpoint for the Skills page cards; absent on single-skill fetches.
   used_by: z.number().int().nullish(),
+  // Ordered repo-relative paths of Project-context docs attached to this skill;
+  // null = none. Paths only — document bodies are never persisted here.
+  context_docs: z.array(z.string()).nullish(),
 });
 export type Skill = z.infer<typeof Skill>;
 
@@ -225,6 +228,9 @@ export const Agent = z.object({
   // Inject repo-intel context (repo skeleton + callers + rank note) into this
   // agent's review prompt. Default on; gated again by the global flag.
   repo_intel: z.boolean().default(true),
+  // Ordered repo-relative paths of Project-context docs attached to this agent;
+  // null = none. Paths only — document bodies are never persisted here.
+  context_docs: z.array(z.string()).nullish(),
 });
 export type Agent = z.infer<typeof Agent>;
 

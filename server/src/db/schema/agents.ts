@@ -31,6 +31,10 @@ export const agents = pgTable('agents', {
   repoIntel: boolean('repo_intel').notNull().default(true),
   enabled: boolean('enabled').notNull().default(true),
   version: integer('version').notNull().default(1),
+  // Ordered repo-relative paths of Project-context docs attached to this agent.
+  // Additive/nullable jsonb (no default) — mirrors the `evidence_files` precedent
+  // on `skills`. Paths only: document BODIES are never persisted (SPEC-01 AC-7).
+  contextDocs: jsonb('context_docs').$type<string[]>(),
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: now(),
 });

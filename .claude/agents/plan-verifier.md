@@ -9,8 +9,10 @@ description: >-
   quality and it never fixes anything; it never takes an implementer's report as evidence. Use
   after the implementers report done and before opening the PR.
 tools: Read, Grep, Glob, Bash
-model: opus
-# No `skills:` and no Skill tool — deliberately. See "Why you have no skills".
+model: sonnet
+# No `skills:` and no Skill tool — deliberately. See "Why you have no skills". Runs on sonnet:
+# the job is mechanical evidence-matching (grep → quote → re-run → mark), not reasoning, and the
+# no-skills design is what guarantees incorruptibility regardless of model tier.
 ---
 
 # Role
@@ -46,6 +48,14 @@ enough, and it is all you get.
   - a **Development Plan**, e.g. `docs/plans/2026-07-12-run-cost.md` — the common case; or
   - a **spec**, e.g. `server/specs/<x>.md` — see "Verifying against a spec" below.
   (`plan` is accepted as an alias for backwards compatibility.)
+
+  **The pipeline runs you twice, and the two runs answer different questions.** First with
+  `source=<plan>` — *did the implementers build the plan?* Then, as the **final acceptance
+  gate**, with `source=<spec>` — *does the built tree satisfy the EARS `AC-N`s the human
+  approved?* The plan is a disposable intermediate; the spec is the contract. A requirement can
+  survive the plan run (the plan was built faithfully) yet fail the spec run (an AC was dropped
+  during planning and never made it into the plan at all). The spec run is the one that catches
+  that, so it is not optional when a spec exists.
 - `base` — optional, defaults to `main`.
 - `scope` — optional. A WP id (`WP2`) to verify one work package. Defaults to all of them.
 
@@ -80,8 +90,11 @@ verifiable, and pretending otherwise produces a matrix of invented requirements.
 
 ## STEP 1 — Extract the requirements. This is a parse, not a judgment.
 
-The planner's template is fixed, so the requirement list falls out of it mechanically. Give each
-a stable ID so re-runs are comparable.
+The implementation-planner's templates are fixed, so the requirement list falls out of the plan
+mechanically. A plan is one of two shapes — **multi-agent** (numbered work packages, each with
+`Acceptance criteria` / `Tests to add` / `Owns`, plus a contention-file table) or **single-agent**
+(one ordered step list, each step with `Acceptance criteria` / `Tests to add`); extract criteria
+from whichever shape you were handed. Give each a stable ID so re-runs are comparable.
 
 | Plan § | Yields | ID | What counts as evidence for `DONE` |
 |---|---|---|---|

@@ -90,6 +90,20 @@ for the rubric.
   read its body — do not treat "it exists and is tested" as evidence it is right.**
   (2026-07-14, Blast Radius L04)
 
+- **`isSafeRepoPath` guards the path STRING, and that is TWO gaps short of "this read stays
+  inside the clone".** The guard (`modules/reviews/intent-helpers.ts`) is the ONLY
+  confinement before `readClone`/`getFileContent`'s bare `join`, and Project Context leaned
+  on it in two new places that exposed both gaps. (1) Its output is rendered by reviewer-core
+  as an UNFENCED `### <path>` label, so it must reject CONTROL CHARS (`\n`/`\r`/…), not just
+  `..`/`/`/`\`/NUL — a POSIX-legal newline in a filename would otherwise break out of the
+  header into top-level prompt text (now rejects C0/DEL). (2) It validates the string but NOT
+  on-disk symlinks, so a content reader doing `readFile(join(clone, relpath))` follows a
+  committed `docs/x.md → /etc/passwd` symlink straight out of the clone. Any fs reader taking
+  a repo-relative path needs a SEPARATE realpath confinement:
+  `realpath(target).startsWith(realpath(base) + sep)` (the `+ sep` blocks sibling-prefix
+  escapes). The discovery walk already skips symlinks; the direct reader was the asymmetric
+  hole. (2026-07-17, Project Context)
+
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
 
@@ -161,6 +175,21 @@ for the rubric.
   (A server-side fetch of an attacker-controlled URL from a PR body is an SSRF vector —
   `http://169.254.169.254/...` is the canonical payload.) (2026-07-12)
 
+- **A walk that matches a configured root by directory BASENAME at any depth needs an
+  `EXCLUDED_DIRS` gate, or it surfaces dependency docs as project content.** Project Context
+  lists `.md` under a dir NAMED `specs`/`docs`/`insights` anywhere in the tree; without
+  excluding `node_modules`/`vendor`/`dist`/`.git`/…, a committed `node_modules/x/docs/readme.md`
+  shows up as an attachable project doc labelled `docs`, and every discovery request walks
+  `.git/`. Keep the excluded set MODULE-LOCAL (don't cross-import repo-intel's `walkClone`
+  constants — that is a tier-2 service import). The lazy content endpoint
+  (`GET /repos/:repoId/context-docs/content?path=`) resolves the clone via the module's OWN
+  workspace-scoped `getClonePath(workspaceId, repoId)`, NOT the unscoped
+  `repoIntel.getFileContent(repoId,…)` — a request-supplied `repoId` through the unscoped
+  facade is a cross-tenant read. Guard order in the service: `getClonePath` → `isSafeRepoPath`
+  → `.md`-only → read; every miss → `NotFoundError` (404, never 500). Docker-free proof of the
+  "reads nothing" property: a service-level unit test asserting `readDocBody` is NEVER called
+  on a traversal/non-`.md` path. (2026-07-17, Project Context)
+
 - **`server/src/modules` has ZERO module→module imports** (only `settings/feature-models`
   is shared). Conventions stayed self-contained by consuming a *container facade*
   (`repoIntel`). Before proposing a new module, check whether the facade it would need
@@ -221,6 +250,13 @@ for the rubric.
   self-skips. **When the integration lane can't run, this is the cheapest real evidence the
   wiring landed** — not a substitute for it, but far better than a green typecheck.
   (2026-07-14)
+
+- **`saveRunTrace` lands a beat AFTER `completeAgentRun` flips the run status terminal.** A
+  driver/test that waits on `agent_runs.status ∈ {done,…}` then fetches `GET /runs/:id/trace`
+  ONCE can hit the sub-ms window where the row is `done` but the trace document isn't written
+  yet → a 404 / empty trace (`specs_read === undefined`). When driving the run flow fast (e.g.
+  against live PG because Docker is absent), poll for the trace DOCUMENT, not just terminal
+  status. (2026-07-17, Project Context)
 
 - **`GitClient.log()` is UNBOUNDED.** `adapters/git/simple-git.ts` calls
   `git.log({ file })` with no `maxCount`, so it walks a file's entire history and
@@ -298,6 +334,32 @@ for the rubric.
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-17 (Risk Brief SPEC-02 — built LLM brief, then REVERTED to findings-derived)
+An LLM `modules/brief` (`POST /pulls/:id/brief` → one `completeStructured` → cached `pr_brief`) was
+built, then **removed the same session** when the design review showed Risk Areas / Review Focus
+should be a **deterministic, client-side projection of the existing review findings** — no model
+call, no new server surface (the feature is "almost free" precisely because findings are already
+computed). Net server change after the revert: none. Durable lesson from the episode:
+- **The `pr-self-review` shared-table guard is `merge-base(main)..working-tree`-scoped, so a purely
+  additive `ADD COLUMN` hunk false-positives as "altering a shared table"** when the schema file
+  (`db/schema/reviews.ts`) already carries earlier committed edits on the branch — the guard's
+  per-file `removed` flag reflects the whole branch diff, not your hunk. Verify additivity with
+  `git diff -U0 -- <file>` (zero `-` lines) + an `ADD COLUMN`-only migration; `runs.ts` shows the
+  same accepted pattern. The guard's real intent — never alter existing columns, never edit an
+  existing migration — is what matters.
+
+### 2026-07-17 (Project Context SPEC-01)
+Wired the dormant `## Project context` slot end-to-end: new `modules/project-context`
+(discovery walk + workspace-scoped clone reads + a lazy `…/context-docs/content?path=`
+endpoint), additive `context_docs` jsonb on `agents`/`skills` (migration 0015, ADD COLUMN
+only), config roots/budget in `platform/config.ts` (env-overridable like `cloneDir`), and
+review-time injection in `run-executor` (agent-first dedup, whole-doc budget drop,
+`specs_read`/`specs_tokens`/`specs_skipped` trace). The security seam is `isSafeRepoPath` —
+hardened this session to reject control chars AND paired with realpath confinement in the
+content reader (see What Doesn't Work); the discovery walk gained an `EXCLUDED_DIRS` gate
+(see Codebase Patterns). Docker absent again: `.it` lanes self-skip, so the confinement
+properties are pinned by service-level unit tests + a live-PG drive.
 
 ### 2026-07-15 (Blast card was stale — no freshness check, no poller)
 Reported: recently-merged PRs never appeared in the Overview "Prior PRs" / Blast Radius

@@ -7,6 +7,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, Button, Tabs } from "@devdigest/ui";
 import type { Skill } from "@devdigest/shared";
+import { useActiveRepo } from "@/lib/repo-context";
 import { TABS } from "./constants";
 import { TYPE_COLOR } from "../SkillsWorkbench/constants";
 import { ConfigTab } from "./_components/ConfigTab";
@@ -14,6 +15,7 @@ import { PreviewTab } from "./_components/PreviewTab";
 import { VersionsTab } from "./_components/VersionsTab";
 import { StatsTab } from "./_components/StatsTab";
 import { EvalsTab } from "./_components/EvalsTab";
+import { ContextTab } from "./_components/ContextTab";
 
 export function SkillEditor({
   skill,
@@ -29,6 +31,8 @@ export function SkillEditor({
   onCancelDraft?: () => void;
 }) {
   const t = useTranslations("skills");
+  const tp = useTranslations("projectContext");
+  const { repoId } = useActiveRepo();
   const isDraft = skill == null;
 
   return (
@@ -64,12 +68,18 @@ export function SkillEditor({
               pad="0 24px"
               value={tab}
               onChange={onTab}
-              tabs={TABS.map((tb) => ({ key: tb.key, label: t(`editor.tabs.${tb.labelKey}`), icon: tb.icon }))}
+              tabs={TABS.map((tb) => ({
+                key: tb.key,
+                label: tb.key === "context" ? tp("tab.title") : t(`editor.tabs.${tb.labelKey}`),
+                icon: tb.icon,
+              }))}
             />
           </div>
           <div style={{ flex: 1, overflow: "auto" }}>
             {tab === "preview" ? (
               <PreviewTab skill={skill} />
+            ) : tab === "context" ? (
+              <ContextTab key={skill.id} skillId={skill.id} repoId={repoId} />
             ) : tab === "evals" ? (
               <EvalsTab />
             ) : tab === "stats" ? (

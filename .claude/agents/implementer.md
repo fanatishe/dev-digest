@@ -96,7 +96,7 @@ or `N/A` (with a one-line reason). **There is no third option, and no skill may 
 from the table.** Skills marked *always* below may **never** be `N/A`.
 
 Your WP also carries a **`Skill set the implementer must fully cover`** field, written by
-the planner, and a **`Skill-driven design notes`** field recording the constraints those
+the implementation-planner, and a **`Skill-driven design notes`** field recording the constraints those
 skills already imposed on the design. Read both. **Your coverage table must contain exactly
 the skills that field lists** — no more, no fewer. If it disagrees with the surface→set
 table below, the plan is wrong: say so in your report and follow the table below.
@@ -187,9 +187,12 @@ written against the wrong skill **will be caught**.
    functions the plan names. Extending beats adding.
 5. **Implement**, leading with the skills the path maps to — and never reaching outside your
    set.
-6. **Write the tests the WP names.** Server DB-backed tests **must** be `*.it.test.ts` (the
-   suffix drives the unit/integration split). Client tests are `*.test.tsx`, colocated,
-   `fetch` mocked.
+6. **Write the tests the WP names — and only those.** Your tests are the **AC-traceable** ones
+   the plan lists under `Tests to add` (the ones `plan-verifier` traces as `WP*.T*`). Broader
+   coverage — adversarial edge cases, seam tests the plan did not name, turning a discovered bug
+   into a failing repro — is **`test-writer`'s** job, not yours; do not pre-empt it. Server
+   DB-backed tests **must** be `*.it.test.ts` (the suffix drives the unit/integration split).
+   Client tests are `*.test.tsx`, colocated, `fetch` mocked.
 7. **Fill in the Skill coverage table.** Every skill in your set gets a row. If you cannot
    honestly write `APPLIED` or a defensible `N/A`, go back to step 5.
 8. **Run the gates** (below). All must pass.

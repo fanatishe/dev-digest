@@ -5,6 +5,7 @@ import { SkillType } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError, ValidationError } from '../../platform/errors.js';
+import { isSafeRepoPath } from '../reviews/intent-helpers.js';
 import { SkillsService } from './service.js';
 import { previewFromMarkdown, SkillImportError } from './import.js';
 
@@ -43,6 +44,19 @@ const UpdateSkillBody = z.object({
   enabled: z.boolean().optional(),
   evidence_files: z.array(z.string()).nullish(),
   message: z.string().optional(),
+});
+
+/**
+ * Attach / detach / reorder Project-context docs on a skill (ordered repo-relative
+ * paths). Same write-time `isSafeRepoPath` sanity as the agent side — a traversal
+ * path is rejected 422 at the boundary.
+ */
+const SetContextDocsBody = z.object({
+  context_docs: z
+    .array(z.string())
+    .refine((paths) => paths.every(isSafeRepoPath), {
+      message: 'context_docs must be safe, repo-relative paths',
+    }),
 });
 
 const RestoreBody = z.object({
@@ -153,6 +167,17 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
         req.body.version,
         req.body.message,
       );
+      if (!skill) throw new NotFoundError('Skill not found');
+      return skill;
+    },
+  );
+
+  app.put(
+    '/skills/:id/context-docs',
+    { schema: { params: IdParams, body: SetContextDocsBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const skill = await service.setContextDocs(workspaceId, req.params.id, req.body.context_docs);
       if (!skill) throw new NotFoundError('Skill not found');
       return skill;
     },

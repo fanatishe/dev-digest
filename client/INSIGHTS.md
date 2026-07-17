@@ -95,6 +95,22 @@ for the rubric.
   copy: `components/` → `lib/` is downward and legal. Now `lib/severity.ts` is the single
   home, and all three consumers import `sevToken()` from it. (2026-07-13, Smart Diff)
 
+- **A tab wired into an editor is DEAD if the PARENT view's `?tab=` allowlist omits its key.**
+  Adding `<ContextTab>` to `AgentEditor`/`SkillEditor` wasn't enough — the parents
+  `AgentDetailView.tsx` / `SkillsWorkbench.tsx` coerce `?tab=` through a `VALID_TABS`
+  allowlist, so `?tab=context` fell back to `config` and the panel NEVER mounted (presented
+  as "clicking the tab does nothing"). When you add an editor tab, add its key to the parent's
+  `VALID_TABS` too. The tab key, `VALID_TABS`, and the nav `activeKeyFor()` case must all use
+  the IDENTICAL string. (2026-07-17, Project Context)
+
+- **An inline-style object conditionally spread (`{...base, ...variant}`) must not mix a CSS
+  SHORTHAND in the base with its LONGHAND in the variant.** `s.row` set
+  `border: '1px solid var(--border)'` and `s.rowSelected` set only `borderColor: 'var(--accent)'`;
+  React warns "Removing a style property during rerender (borderColor) when a conflicting
+  property is set (border)" and mis-styles on select/deselect (it drops the longhand while the
+  shorthand persists). Keep both at the SAME granularity — put the full
+  `border: '1px solid var(--accent)'` shorthand in the variant. (2026-07-17)
+
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
 
@@ -238,6 +254,13 @@ for the rubric.
   Sidebar injects `badge: String(ctx.prCount)` onto the `pulls` item when `ctx.prCount`
   is set; don't add a static badge in `nav.ts`. Only list items whose pages exist —
   a nav item pointing at a missing route just 404s. (2026-07-11)
+  - **CORRECTION/EXTENSION (2026-07-17): a nav item is NOT a `nav.ts` edit ALONE — the label
+    is i18n.** The sidebar and command palette render the label via `t(\`nav.${item.key}\`)`
+    in the `shell` namespace (`app-shell/hooks/useShellCommands.ts`), so a `nav.ts` item whose
+    key lacks a `nav.<key>` entry in `messages/en/shell.json` throws
+    `MISSING_MESSAGE: shell.nav.<key>` and renders blank. Adding a nav item = a `nav.ts` entry
+    **+** a `shell.json` `nav.<key>` string **+** (for highlighting) a matching `activeKeyFor()`
+    case. The `label` field on the `nav.ts` item is NOT what renders. (Project Context)
 
 - **A new `@devdigest/ui` primitive that uses hooks/refs does NOT need a `"use client"`
   directive.** No file in `vendor/ui/kit/` declares it — not even `Modal.tsx` (3 hooks).
@@ -253,6 +276,15 @@ for the rubric.
   exist`). Narrow the iteration keys with `as const` (e.g.
   `["CRITICAL","WARNING","SUGGESTION"] as const`) rather than typing them `Severity[]`.
   Contract-side `Severity` (`vendor/shared/contracts/findings.ts`) is the 3-value enum. (2026-07-09)
+
+- **next-intl THROWS on a missing key within a PRESENT namespace, but only LOGS (key
+  fallback) when the WHOLE namespace is absent.** A missing `projectContext.foo` inside a
+  mounted `projectContext` provider blanks the subtree (a real "the panel is empty" failure);
+  a component reading a namespace the test's `NextIntlClientProvider` never supplied just
+  renders the raw key and passes. So an editor shell that resolves a label from a SECOND
+  namespace (e.g. `AgentEditor` → `projectContext` for its tab label) must have its tests
+  PROVIDE that namespace, or the failure mode differs between test (passes) and runtime
+  (throws/blanks). (2026-07-17, Project Context)
 
 ## Recurring Errors & Fixes
 <!-- An error seen more than once + its fix. -->
@@ -273,8 +305,48 @@ for the rubric.
   existing intl/query/toast providers (see `AgentCard.test.tsx`'s `renderWithIntl`). Same
   class of failure as a missing `ToastProvider`. (2026-07-10)
 
+- **A row-label cosmetic that splits a path into SEPARATE DOM nodes breaks any PARENT-level
+  test asserting the full path via `getByText('<dir>/<file>')`.** Splitting `specs/a.md` into
+  a bold `a.md` + a muted `specs/` broke `AgentEditor.test.tsx`'s `getByText('specs/a.md')`
+  (no single node holds the concatenated text). When changing a widely-embedded presentational
+  row, grep the ancestor editors' `*.test.tsx` for the old full-text before assuming the suite
+  stays green. (2026-07-17, Project Context)
+
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-17 (Risk Areas + Review Focus — findings-derived, no LLM)
+The RISK AREAS section (under the Intent body) and the full-width REVIEW FOCUS section are **two
+lenses on the SAME already-computed data**: the latest review's non-dismissed findings from
+`usePrReviews`, ordered severity-desc then confidence-desc in a pure `OverviewTab/helpers.ts`, with
+no model call (an earlier LLM `useBrief`/`useGenerateBrief` + "Generate brief" button design was
+removed once the screenshots showed the data simply present). Interaction: RiskAreas is a
+single-select accordion (`useState<string|null>`) — the chevron opens ONE shared detail panel below
+the list (the finding's `rationale`), while the block body is a SEPARATE button that calls the
+already-threaded `onOpenFile(file)` (`PrDetailView setParams({tab:'diff',file})`). Two notes:
+- **Verify a design token exists where its VALUES live (`vendor/ui/styles.css`), not only where a
+  map references it (`tokens.ts`).** Also confirm a token before styling with it — `--bg-subtle`
+  does NOT exist (the surfaces are `--bg-elevated`/`--bg-hover`/`--bg-primary`/`--bg-surface`);
+  grep `styles.css` rather than guessing. Finding severities are `CRITICAL/WARNING/SUGGESTION`, so
+  they reuse the existing `sevToken` directly — no separate risk-level map is needed.
+- **Two sibling route-features that need the same tiny pure helper can't share it when the promotion
+  target is outside the folder.** RISK AREAS (`IntentCard/_components/RiskAreas`) and REVIEW FOCUS
+  (`OverviewTab/_components/ReviewFocus`) both need `lineLabel`/`fileRef`; frontend-ui-architecture
+  forbids cross-sibling imports, so each keeps a small documented colocated copy. When the container
+  (`OverviewTab`) already owns the data, do the derivation once there and pass plain
+  `FindingRecord[]` down — the presentational children avoid re-deriving and stay import-light.
+
+### 2026-07-17 (Project Context SPEC-01 — page, Context tabs, bug fixes)
+Built the `/project-context` two-pane master–detail page (list + inline Preview/Edit
+(read-only) pane fed by a new `useContextDocContent` hook), the agent+skill Context tabs
+(attach/detach/reorder + eye-button `DocPreviewDrawer` + a "SERIALIZES AS" manifest grouped
+by root), and trace-drawer additions. `DocPreviewDrawer` is DUPLICATED colocated per tab and
+kept hook-agnostic (attachment passed as `attached`/`onToggleAttached`), matching the
+no-sideways-import rule and the `RunTraceDrawer`/`ImportDrawer` convention — NOT promoted to
+`components/` (that "promote, never copy" rule is for constants, not route-owned feature UI).
+Read-only Edit = `CodeEditor` with no `onChange`. Fixed two runtime bugs mocked-fetch tests
+missed: the Context tab never mounted (parent `VALID_TABS` allowlist — see What Doesn't Work)
+and `MISSING_MESSAGE: shell.nav.project-context` (nav label i18n — see the nav correction).
 
 ### 2026-07-14 (Blast Radius L04)
 Built the Blast-radius card into the Overview grid's long-standing placeholder slot —

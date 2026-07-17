@@ -7,11 +7,12 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Icon, Badge, Checkbox, Skeleton, EmptyState } from "@devdigest/ui";
+import { Icon, IconBtn, Badge, Checkbox, Skeleton, EmptyState } from "@devdigest/ui";
 import type { ContextDoc } from "@devdigest/shared";
 import { useAgent } from "@/lib/hooks/agents";
 import { useContextDocs, useSetAgentContextDocs } from "@/lib/hooks/context-docs";
-import { attachedTokens } from "./helpers";
+import { attachedTokens, manifestGroups, splitPath, type ManifestGroup } from "./helpers";
+import { DocPreviewDrawer } from "./_components/DocPreviewDrawer";
 import { s } from "./styles";
 
 export function ContextTab({ agentId, repoId }: { agentId: string; repoId: string | null }) {
@@ -24,6 +25,9 @@ export function ContextTab({ agentId, repoId }: { agentId: string; repoId: strin
   const [order, setOrder] = React.useState<string[]>(attachedFromServer);
   const [dragPath, setDragPath] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState("");
+  // Preview drawer: the only new state is which doc's overview is open (a path).
+  // Everything else (the doc, whether it's attached) is derived from `byPath`/`order`.
+  const [previewPath, setPreviewPath] = React.useState<string | null>(null);
 
   // Resync local order whenever the persisted set changes (post-mutation cache write).
   const serverKey = attachedFromServer.join("\n");
@@ -73,6 +77,12 @@ export function ContextTab({ agentId, repoId }: { agentId: string; repoId: strin
     setDragPath(null);
   };
 
+  const toggleAttached = (path: string) =>
+    commit(order.includes(path) ? order.filter((p) => p !== path) : [...order, path]);
+
+  // Derived: the doc whose preview drawer is open (never a copy of the row in state).
+  const previewDoc = previewPath ? byPath.get(previewPath) : undefined;
+
   return (
     <div style={s.wrap}>
       <div style={s.headerRow}>
@@ -108,7 +118,8 @@ export function ContextTab({ agentId, repoId }: { agentId: string; repoId: strin
                 >
                   <Icon.Menu size={15} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
                   <Checkbox checked onChange={() => commit(order.filter((p) => p !== path))} />
-                  <DocRowLabel doc={byPath.get(path)!} tokensLabel={t("row.tokens", { tokens: (byPath.get(path)!.tokens).toLocaleString("en-US") })} />
+                  <DocRowLabel doc={byPath.get(path)!} />
+                  <IconBtn icon="Eye" label={t("row.previewAriaLabel", { name: path })} onClick={() => setPreviewPath(path)} />
                 </div>
               ))}
             </>
@@ -121,7 +132,8 @@ export function ContextTab({ agentId, repoId }: { agentId: string; repoId: strin
                 <div key={doc.path} style={{ ...s.row, cursor: "default" }}>
                   <span style={{ width: 15, flexShrink: 0 }} />
                   <Checkbox checked={false} onChange={() => commit([...order, doc.path])} />
-                  <DocRowLabel doc={doc} tokensLabel={t("row.tokens", { tokens: doc.tokens.toLocaleString("en-US") })} />
+                  <DocRowLabel doc={doc} />
+                  <IconBtn icon="Eye" label={t("row.previewAriaLabel", { name: doc.path })} onClick={() => setPreviewPath(doc.path)} />
                 </div>
               ))}
             </>
@@ -138,21 +150,81 @@ export function ContextTab({ agentId, repoId }: { agentId: string; repoId: strin
               {t("tab.overBudget", { tokens: total.toLocaleString("en-US"), budget: budget.toLocaleString("en-US") })}
             </div>
           )}
+
+          <ManifestPanel groups={manifestGroups(docs, order)} />
         </>
+      )}
+
+      {previewDoc && (
+        <DocPreviewDrawer
+          doc={previewDoc}
+          repoId={repoId}
+          attached={order.includes(previewDoc.path)}
+          onToggleAttached={() => toggleAttached(previewDoc.path)}
+          onClose={() => setPreviewPath(null)}
+        />
       )}
     </div>
   );
 }
 
-function DocRowLabel({ doc, tokensLabel }: { doc: ContextDoc; tokensLabel: string }) {
+// Row label: bold filename + muted folder-path (design SoT, AC-16). The root Badge
+// stays; the eye button and controls live in the parent row.
+function DocRowLabel({ doc }: { doc: ContextDoc }) {
+  const { name, dir } = splitPath(doc.path);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
-      <span className="mono" style={s.rowPath}>
-        {doc.path}
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+      <span className="mono" style={s.rowName}>
+        {name}
       </span>
+      {dir && (
+        <span className="mono" style={s.rowDir}>
+          {dir}
+        </span>
+      )}
       <div style={{ flex: 1 }} />
-      <span style={s.rowTokens}>{tokensLabel}</span>
       <Badge>{doc.root}</Badge>
+    </div>
+  );
+}
+
+// "Serializes as" manifest preview (AC-16): editor-only, display-only. Derived in
+// render from the attached set — paths only, grouped by configured root, no bodies,
+// persists nothing. Known roots get a friendly heading; unknown roots fall back to a
+// generic one built from the root label.
+function ManifestPanel({ groups }: { groups: ManifestGroup[] }) {
+  const t = useTranslations("projectContext");
+  const headingFor = (root: string) => {
+    switch (root) {
+      case "specs":
+        return t("manifest.heading.specs");
+      case "docs":
+        return t("manifest.heading.docs");
+      case "insights":
+        return t("manifest.heading.insights");
+      default:
+        return t("manifest.headingFallback", { root });
+    }
+  };
+  return (
+    <div style={s.manifestSection}>
+      <div style={s.manifestLabel}>{t("manifest.label")}</div>
+      <div className="mono" style={s.manifestBlock}>
+        {groups.length === 0 ? (
+          <span style={s.manifestEmpty}>{t("manifest.empty")}</span>
+        ) : (
+          groups.map((group) => (
+            <div key={group.root}>
+              <div style={s.manifestHeading}>{t("manifest.headingLine", { heading: headingFor(group.root) })}</div>
+              {group.paths.map((path) => (
+                <div key={path} style={s.manifestPath}>
+                  {t("manifest.pathLine", { path })}
+                </div>
+              ))}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

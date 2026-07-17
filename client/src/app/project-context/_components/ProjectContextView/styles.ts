@@ -47,7 +47,11 @@ export const s = {
     color: "inherit",
   } satisfies CSSProperties,
   rowSelected: {
-    borderColor: "var(--accent)",
+    // Full `border` shorthand (not `borderColor` longhand): `row` sets the `border`
+    // shorthand, and mixing shorthand + longhand on the same element when this is
+    // spread over `row` on select/deselect triggers React's "Removing a style
+    // property during rerender" warning and can mis-style the accent border.
+    border: "1px solid var(--accent)",
     background: "var(--bg-hover)",
   } satisfies CSSProperties,
   rowIcon: { color: "var(--text-muted)", flexShrink: 0 } satisfies CSSProperties,

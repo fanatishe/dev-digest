@@ -29,6 +29,21 @@ for the rubric.
   `value ∈ {undefined, '', '   '}` BOTH the system and user messages are byte-identical
   to the no-slot baseline. That one test is what lets a new slot ship without
   re-validating every existing review path. (2026-07-12)
+  - 2026-07-17: this generalizes to a **collection** slot. `specs` is now
+    `{ path, body }[]`; filter blank-body items FIRST (`body.trim()`), so `undefined`,
+    `[]`, an all-`''` list and an all-`'   '` list all collapse to the exact no-slot
+    baseline with ONE filter — no separate all-empty branch. (Project Context)
+
+- **A per-item LABEL for untrusted content goes OUTSIDE the `<untrusted>` fence; only the
+  body is wrapped.** The `## Project context` slot renders one `### <repo-relative path>`
+  header per doc plus `wrapUntrusted('spec:'+path, body)` — the path appears in the header
+  AND the fence's `source=` attribute, both UNFENCED. That is only safe because the path is
+  validated upstream by the server's `isSafeRepoPath`, which now rejects control chars
+  (`\n`/`\r`/…) as well as `..`/`/`/`\`/NUL — a POSIX-legal newline in a filename would
+  otherwise break out of the header line into unfenced top-level prompt text. reviewer-core
+  ASSUMES that guarantee and does not re-validate. Distinct from the "rule inside untrusted
+  is DOA" entry above: that governs behavioural *rules*; this is about *labelling* untrusted
+  DATA. (2026-07-17, Project Context)
 
 ## Tool & Library Notes
 <!-- Quirks and gotchas of dependencies/tooling. -->
@@ -54,6 +69,14 @@ for the rubric.
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-17 (Project Context — specs slot)
+Changed the `specs` prompt slot from `string[]` to `{ path, body }[]` and wired the
+long-dormant `## Project context` block: one `### <path>` header per doc (OUTSIDE the
+fence) + `wrapUntrusted` body, deduped/ordered/budget-capped upstream by the server.
+`INJECTION_GUARD`/`wrapUntrusted`/`SCOPE_RULE` untouched. AC "zero new LLM calls" proven
+by call-COUNT, not the vacuous `tokensOut` assertion. Omit-when-empty byte-identity
+preserved for the collection case (see Codebase Patterns).
 
 ## Open Questions
 <!-- Unresolved things worth investigating. -->

@@ -10,7 +10,14 @@
   },
   "row": {
     "tokens": "{tokens} tokens",
-    "usedByAgents": "Used by {count, plural, one {# agent} other {# agents}}"
+    "usedByAgents": "Used by {count, plural, one {# agent} other {# agents}}",
+    "previewAriaLabel": "Preview {name}"
+  },
+  "drawer": {
+    "attach": "Attach",
+    "attached": "Attached",
+    "loadError": "Could not load this document's content.",
+    "emptyBody": "This document is empty."
   },
   "empty": {
     "title": "No project-context documents",
@@ -47,6 +54,18 @@
     "injectionLabel": "injected as untrusted ## Project context",
     "budget": "{tokens} of {budget} token budget",
     "overBudget": "Over budget: {tokens} of {budget} tokens. Documents past the budget are dropped whole at review time."
+  },
+  "manifest": {
+    "label": "Serializes as",
+    "headingLine": "## {heading}",
+    "pathLine": "- {path}",
+    "heading": {
+      "specs": "Project specifications",
+      "docs": "Project docs",
+      "insights": "Project insights"
+    },
+    "headingFallback": "Project {root}",
+    "empty": "Attach documents to preview how they serialize."
   },
   "trace": {
     "specsTokens": "PROJECT CTX",

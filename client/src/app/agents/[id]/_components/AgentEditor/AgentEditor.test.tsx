@@ -112,7 +112,7 @@ describe("A2 Agent Editor (smoke)", () => {
 
     // Heading + attached row + injection label + derived running total all render.
     expect(screen.getByText("Project context")).toBeInTheDocument();
-    expect(screen.getByText("specs/a.md")).toBeInTheDocument();
+    expect(screen.getByText("a.md")).toBeInTheDocument();
     expect(screen.getByText("injected as untrusted ## Project context")).toBeInTheDocument();
     expect(screen.getByText("≈ 100 tokens")).toBeInTheDocument();
   });

@@ -104,6 +104,20 @@ for the rubric.
   escapes). The discovery walk already skips symlinks; the direct reader was the asymmetric
   hole. (2026-07-17, Project Context)
 
+- **A pgvector column-dimension mismatch produces a SILENT zero-result query, not an error.**
+  When you change embedding models and re-embed content (or miss a re-embedding), the stored
+  vectors have dimension N but the query vector has dimension M. A `<->` similarity search
+  with mismatched dimensions returns **zero rows** — no exception, no hint, just silently
+  correct results. The query is technically valid on its own; PostgreSQL just finds no
+  matches (a dimension mismatch guarantees orthogonality by construction). This is horrifying
+  because: (1) the client shows "no results" instead of "something is broken"; (2) grep for
+  "query returned empty" finds config bugs, not dimension bugs. **Always validate: when
+  changing embedding models, run a DISTINCT count on the stored vectors' dimensions
+  (`SELECT DISTINCT pgvector.dimensionality(column) FROM table`). After re-embedding, run
+  the same query and assert the result is a single row — if you see two distinct dimensions,
+  one embedding run was incomplete.** This is not a psycopg3 issue or a drizzle issue; it is
+  pgvector's design. (2026-07-17)
+
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
 

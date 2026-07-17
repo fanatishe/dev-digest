@@ -19,3 +19,6 @@ link line below. Retros are **not committed by the skill**; they are left in the
 - [2026-07-17 — spec-creator authoring SPEC-01-project-context (3 dispatches, fully serial)](2026-07-17-spec-creator-run.md)
 - [2026-07-17 — SDD build of Project Context (SPEC-01): 23 agents, base plan + addendum + design corrections](2026-07-17-project-context-sdd-build.md)
 - [2026-07-17 — Risk Brief: full SDD build of an LLM feature, then reverted to a findings-derived redesign (~1.2M of ~1.42M tokens discarded)](2026-07-17-risk-brief-build-and-redesign.md)
+- [2026-07-17 — Reconstructing the lost architecture-reviewer-lite agent + realigning its A/B eval (3 Explore agents, one parallel batch, ~2.3× parallelism)](2026-07-17-architecture-reviewer-lite-reconstruction.md)
+- [2026-07-17 — Building & greening the `eval:workflow` case suite (no subagents; 21 nested eval-sessions over 5 serial runs, ~0.46 rework ratio)](2026-07-17-eval-workflow-cases-build.md)
+- [2026-07-17 — Wiring the Harness evals into GitHub Actions CI (2 Explore agents, one parallel batch, ~1.78× parallelism, 0 rework — reuse of existing `ci-detect.mjs` collapsed the build to one YAML file)](2026-07-17-evals-ci-github-actions.md)

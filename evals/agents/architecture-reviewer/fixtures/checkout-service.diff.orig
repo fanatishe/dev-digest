@@ -1,3 +1,5 @@
+<<<<<<< HEAD
+=======
 diff --git a/server/src/modules/checkout/domain/checkout.ts b/server/src/modules/checkout/domain/checkout.ts
 index 1111111..2222222 100644
 --- a/server/src/modules/checkout/domain/checkout.ts
@@ -14,10 +16,25 @@ index 1111111..2222222 100644
    return order.total;
  }
 
+>>>>>>> 6ddc108 (Add evals from burnjohn)
 diff --git a/server/src/modules/checkout/service.ts b/server/src/modules/checkout/service.ts
 index 3333333..4444444 100644
 --- a/server/src/modules/checkout/service.ts
 +++ b/server/src/modules/checkout/service.ts
+<<<<<<< HEAD
+@@ -1,8 +1,13 @@
++import type { FastifyReply } from "fastify";
++import { Octokit } from "octokit";
+ import { priceOrder } from "./domain/checkout.js";
+
+ export class CheckoutService {
++  private gh = new Octokit();
++
+-  async checkout(order: { id: string; total: number }) {
++  async checkout(order: { id: string; total: number }, reply?: FastifyReply) {
+     const price = priceOrder(order);
++    await this.gh.rest.issues.create({ owner: "x", repo: "y", title: order.id });
+=======
 @@ -1,10 +1,14 @@
  import { priceOrder } from "./domain/checkout.js";
 +import { PgCheckoutRepository } from "./repository.js";
@@ -28,6 +45,7 @@ index 3333333..4444444 100644
    async checkout(order: { id: string; total: number }) {
      const price = priceOrder(order);
 +    await this.repo.save(order.id, price);
+>>>>>>> 6ddc108 (Add evals from burnjohn)
      return { price };
    }
  }

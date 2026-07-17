@@ -63,7 +63,7 @@ describe("IntentCard", () => {
     expect(screen.getByText("Stale")).toBeInTheDocument();
   });
 
-  it("renders cleanly for a PR with no description — no risk areas, metadata-only sources", () => {
+  it("renders cleanly for a PR with no review yet — metadata-only sources, no generate CTA", () => {
     renderCard({
       intent: {
         ...INTENT,
@@ -72,7 +72,10 @@ describe("IntentCard", () => {
       },
     });
 
-    expect(screen.getByText("No notable risks flagged.")).toBeInTheDocument();
+    // With no findings and no intent risk chips, RISK AREAS shows only the run-a-review
+    // hint — never a "generate brief" button (Risk Areas come from findings, not an LLM).
+    expect(screen.getByText(/run a review to surface/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /generate/i })).not.toBeInTheDocument();
     expect(
       screen.getByText(/derived from: title, branch, commits, files/),
     ).toBeInTheDocument();

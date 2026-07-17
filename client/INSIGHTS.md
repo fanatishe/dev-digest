@@ -315,6 +315,27 @@ for the rubric.
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
 
+### 2026-07-17 (Risk Areas + Review Focus — findings-derived, no LLM)
+The RISK AREAS section (under the Intent body) and the full-width REVIEW FOCUS section are **two
+lenses on the SAME already-computed data**: the latest review's non-dismissed findings from
+`usePrReviews`, ordered severity-desc then confidence-desc in a pure `OverviewTab/helpers.ts`, with
+no model call (an earlier LLM `useBrief`/`useGenerateBrief` + "Generate brief" button design was
+removed once the screenshots showed the data simply present). Interaction: RiskAreas is a
+single-select accordion (`useState<string|null>`) — the chevron opens ONE shared detail panel below
+the list (the finding's `rationale`), while the block body is a SEPARATE button that calls the
+already-threaded `onOpenFile(file)` (`PrDetailView setParams({tab:'diff',file})`). Two notes:
+- **Verify a design token exists where its VALUES live (`vendor/ui/styles.css`), not only where a
+  map references it (`tokens.ts`).** Also confirm a token before styling with it — `--bg-subtle`
+  does NOT exist (the surfaces are `--bg-elevated`/`--bg-hover`/`--bg-primary`/`--bg-surface`);
+  grep `styles.css` rather than guessing. Finding severities are `CRITICAL/WARNING/SUGGESTION`, so
+  they reuse the existing `sevToken` directly — no separate risk-level map is needed.
+- **Two sibling route-features that need the same tiny pure helper can't share it when the promotion
+  target is outside the folder.** RISK AREAS (`IntentCard/_components/RiskAreas`) and REVIEW FOCUS
+  (`OverviewTab/_components/ReviewFocus`) both need `lineLabel`/`fileRef`; frontend-ui-architecture
+  forbids cross-sibling imports, so each keeps a small documented colocated copy. When the container
+  (`OverviewTab`) already owns the data, do the derivation once there and pass plain
+  `FindingRecord[]` down — the presentational children avoid re-deriving and stay import-light.
+
 ### 2026-07-17 (Project Context SPEC-01 — page, Context tabs, bug fixes)
 Built the `/project-context` two-pane master–detail page (list + inline Preview/Edit
 (read-only) pane fed by a new `useContextDocContent` hook), the agent+skill Context tabs

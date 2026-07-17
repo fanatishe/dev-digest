@@ -335,6 +335,20 @@ for the rubric.
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
 
+### 2026-07-17 (Risk Brief SPEC-02 — built LLM brief, then REVERTED to findings-derived)
+An LLM `modules/brief` (`POST /pulls/:id/brief` → one `completeStructured` → cached `pr_brief`) was
+built, then **removed the same session** when the design review showed Risk Areas / Review Focus
+should be a **deterministic, client-side projection of the existing review findings** — no model
+call, no new server surface (the feature is "almost free" precisely because findings are already
+computed). Net server change after the revert: none. Durable lesson from the episode:
+- **The `pr-self-review` shared-table guard is `merge-base(main)..working-tree`-scoped, so a purely
+  additive `ADD COLUMN` hunk false-positives as "altering a shared table"** when the schema file
+  (`db/schema/reviews.ts`) already carries earlier committed edits on the branch — the guard's
+  per-file `removed` flag reflects the whole branch diff, not your hunk. Verify additivity with
+  `git diff -U0 -- <file>` (zero `-` lines) + an `ADD COLUMN`-only migration; `runs.ts` shows the
+  same accepted pattern. The guard's real intent — never alter existing columns, never edit an
+  existing migration — is what matters.
+
 ### 2026-07-17 (Project Context SPEC-01)
 Wired the dormant `## Project context` slot end-to-end: new `modules/project-context`
 (discovery walk + workspace-scoped clone reads + a lazy `…/context-docs/content?path=`

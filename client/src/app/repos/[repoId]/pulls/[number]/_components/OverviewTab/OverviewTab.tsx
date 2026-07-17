@@ -11,8 +11,11 @@ import React from "react";
 import { SectionLabel } from "@devdigest/ui";
 import { IntentCard } from "../IntentCard";
 import { BlastRadiusCard } from "../BlastRadiusCard";
+import { ReviewFocus } from "./_components/ReviewFocus";
 import { useComputeIntent, useIntent } from "@/lib/hooks/intent";
 import { useBlastRadius, usePrHistory } from "@/lib/hooks/blast";
+import { usePrReviews } from "@/lib/hooks/reviews";
+import { focusFindings, orderedRiskFindings } from "./helpers";
 import { s } from "./styles";
 
 interface OverviewTabProps {
@@ -42,6 +45,13 @@ export function OverviewTab({
   // still has an index to read, and an empty prior-PR list is not an error.
   const { data: history } = usePrHistory(prId);
 
+  // Risk Areas + Review Focus are two lenses on the SAME already-computed data: the
+  // latest review's findings. No model call is spent to show them — a plain read of the
+  // persisted reviews, ordered deterministically.
+  const { data: reviews } = usePrReviews(prId);
+  const riskFindings = React.useMemo(() => orderedRiskFindings(reviews), [reviews]);
+  const focus = React.useMemo(() => focusFindings(riskFindings), [riskFindings]);
+
   return (
     <>
       <div style={s.grid}>
@@ -50,6 +60,8 @@ export function OverviewTab({
           loading={isLoading}
           computing={compute.isPending}
           onRecompute={() => compute.mutate()}
+          findings={riskFindings}
+          onOpenFile={onOpenFile}
         />
         <BlastRadiusCard
           blast={blast ?? null}
@@ -60,6 +72,8 @@ export function OverviewTab({
           onOpenFile={onOpenFile}
         />
       </div>
+
+      <ReviewFocus findings={focus} onOpenFile={onOpenFile} />
 
       {prBody && (
         <section>

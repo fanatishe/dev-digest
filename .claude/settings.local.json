@@ -10,5 +10,8 @@
   ],
   "enabledPlugins": {
     "github@claude-plugins-official": true
-  }
+  },
+  "disabledMcpjsonServers": [
+    "devdigest"
+  ]
 }

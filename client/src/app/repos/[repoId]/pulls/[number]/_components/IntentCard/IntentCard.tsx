@@ -12,8 +12,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Button, Card, EmptyState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
-import type { PrIntentRecord } from "@devdigest/shared";
+import type { FindingRecord, PrIntentRecord } from "@devdigest/shared";
 import { tokenSavings } from "./helpers";
+import { RiskAreas } from "./_components/RiskAreas";
 import { s } from "./styles";
 
 interface IntentCardProps {
@@ -24,9 +25,21 @@ interface IntentCardProps {
   /** The recompute POST is in flight (a multi-second model call). */
   computing?: boolean;
   onRecompute: () => void;
+  /** The latest review's non-dismissed findings — the deterministic source for the
+   *  RISK AREAS section. The intent sentence + scope block are unaffected. */
+  findings?: FindingRecord[];
+  /** Reveal a changed file in the Files-changed tab. */
+  onOpenFile?: (file: string) => void;
 }
 
-export function IntentCard({ intent, loading, computing, onRecompute }: IntentCardProps) {
+export function IntentCard({
+  intent,
+  loading,
+  computing,
+  onRecompute,
+  findings = [],
+  onOpenFile = () => {},
+}: IntentCardProps) {
   const t = useTranslations("brief");
 
   // Derived during render — never mirrored into state (react-best-practices).
@@ -106,29 +119,7 @@ export function IntentCard({ intent, loading, computing, onRecompute }: IntentCa
           </section>
         </div>
 
-        <section>
-          <h3 style={s.colLabel("var(--text-muted)")}>
-            <Icon.AlertTriangle size={13} aria-hidden />
-            {t("intent.riskAreas")}
-          </h3>
-          {risks.length === 0 ? (
-            <p style={s.muted}>{t("noRisks")}</p>
-          ) : (
-            <div style={s.chips}>
-              {risks.map((risk, i) => (
-                <Badge
-                  key={`${i}-${risk}`}
-                  icon="AlertTriangle"
-                  color="var(--warn)"
-                  bg="transparent"
-                  style={{ border: "1px solid var(--border)", padding: "5px 10px" }}
-                >
-                  <span style={{ color: "var(--text-secondary)" }}>{risk}</span>
-                </Badge>
-              ))}
-            </div>
-          )}
-        </section>
+        <RiskAreas findings={findings} intentRisks={risks} onOpenFile={onOpenFile} />
 
         {(savings || sources.length > 0) && (
           <footer style={s.footer}>

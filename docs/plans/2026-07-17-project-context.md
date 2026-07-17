@@ -1,5 +1,5 @@
 # Implementation Plan — Project Context (SPEC-01)
-Status: DRAFT · Mode: multi-agent · Plan ID: 2026-07-17-project-context · Author: implementation-planner agent
+Status: APPROVED · Mode: multi-agent · Plan ID: 2026-07-17-project-context · Author: implementation-planner agent
 
 ## 1. Context & goal
 Manually attach repo markdown (under configured roots `specs`/`docs`/`insights`) to a review

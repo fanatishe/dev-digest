@@ -1,0 +1,104 @@
+{
+  "skill": "onion-architecture",
+  "iteration": 1,
+  "configs": {
+    "old_skill": {
+      "passSum": 20,
+      "totSum": 22,
+      "casePass": 4,
+      "cases": 5,
+      "tok": 35346,
+      "ms": 74032
+    },
+    "new_skill": {
+      "passSum": 22,
+      "totSum": 22,
+      "casePass": 5,
+      "cases": 5,
+      "tok": 32810,
+      "ms": 63808
+    }
+  },
+  "rows": [
+    {
+      "case": "route-db-leak",
+      "cfg": "old_skill",
+      "pass": 4,
+      "total": 4,
+      "tokens": 35268,
+      "ms": 71613
+    },
+    {
+      "case": "route-db-leak",
+      "cfg": "new_skill",
+      "pass": 4,
+      "total": 4,
+      "tokens": 35912,
+      "ms": 78624
+    },
+    {
+      "case": "service-constructs-adapter",
+      "cfg": "old_skill",
+      "pass": 4,
+      "total": 4,
+      "tokens": 34643,
+      "ms": 71781
+    },
+    {
+      "case": "service-constructs-adapter",
+      "cfg": "new_skill",
+      "pass": 4,
+      "total": 4,
+      "tokens": 34827,
+      "ms": 62728
+    },
+    {
+      "case": "core-impurity",
+      "cfg": "old_skill",
+      "pass": 4,
+      "total": 4,
+      "tokens": 31473,
+      "ms": 54505
+    },
+    {
+      "case": "core-impurity",
+      "cfg": "new_skill",
+      "pass": 4,
+      "total": 4,
+      "tokens": 28989,
+      "ms": 54602
+    },
+    {
+      "case": "impure-helper",
+      "cfg": "old_skill",
+      "pass": 4,
+      "total": 4,
+      "tokens": 35606,
+      "ms": 63516
+    },
+    {
+      "case": "impure-helper",
+      "cfg": "new_skill",
+      "pass": 4,
+      "total": 4,
+      "tokens": 32568,
+      "ms": 72607
+    },
+    {
+      "case": "cross-module-reach",
+      "cfg": "old_skill",
+      "pass": 4,
+      "total": 6,
+      "tokens": 39739,
+      "ms": 108746
+    },
+    {
+      "case": "cross-module-reach",
+      "cfg": "new_skill",
+      "pass": 6,
+      "total": 6,
+      "tokens": 31756,
+      "ms": 50481
+    }
+  ]
+}

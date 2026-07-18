@@ -1,0 +1,19 @@
+diff --git a/server/src/modules/checkout/service.ts b/server/src/modules/checkout/service.ts
+index 3333333..4444444 100644
+--- a/server/src/modules/checkout/service.ts
++++ b/server/src/modules/checkout/service.ts
+@@ -1,8 +1,13 @@
++import type { FastifyReply } from "fastify";
++import { Octokit } from "octokit";
+ import { priceOrder } from "./domain/checkout.js";
+
+ export class CheckoutService {
++  private gh = new Octokit();
++
+-  async checkout(order: { id: string; total: number }) {
++  async checkout(order: { id: string; total: number }, reply?: FastifyReply) {
+     const price = priceOrder(order);
++    await this.gh.rest.issues.create({ owner: "x", repo: "y", title: order.id });
+     return { price };
+   }
+ }

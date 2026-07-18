@@ -1,0 +1,88 @@
+{
+  "skill_name": "onion-architecture",
+  "description": "Detection evals: each fixture is a set of DevDigest backend files under pre-PR review with boundary violations planted (no marker comments). A run passes an assertion when its written review names that specific violation and, where relevant, does NOT flag the clean code alongside it.",
+  "baseline": "without_skill",
+  "evals": [
+    {
+      "id": 1,
+      "name": "route-db-leak",
+      "prompt": "I'm adding a `pulls` module to the DevDigest server. This is `server/src/modules/pulls/routes.ts` before I open a PR — there's no service or repository yet, it's all in the route. Review it for architecture / layering problems and tell me what to change.",
+      "files": ["fixtures/01-pulls-route/routes.ts"],
+      "expected_output": "Flags that the HTTP/transport ring (routes.ts) imports drizzle-orm + db/client + db/schema and runs SELECT/INSERT inline; says routes must delegate; recommends moving the queries into a repository called from a service.",
+      "assertions": [
+        { "text": "Identifies that routes.ts importing drizzle-orm / db/client / db/schema is a boundary violation (DB in the HTTP ring)", "passed": null, "evidence": "" },
+        { "text": "Flags the raw SELECT/INSERT queries running directly inside the route handlers", "passed": null, "evidence": "" },
+        { "text": "Recommends moving persistence into a repository and delegating from a service (routes stay thin)", "passed": null, "evidence": "" },
+        { "text": "References the onion rule/check by name (e.g. routes-no-db) or points at the dependency-cruiser / arch:check", "passed": null, "evidence": "" }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "service-constructs-adapter",
+      "prompt": "Review `server/src/modules/repos/service.ts` for me before I push. Anything wrong with how it uses git and the LLM?",
+      "files": ["fixtures/02-repos-service/service.ts"],
+      "expected_output": "Flags that the application ring constructs concrete adapters (new SimpleGitClient, new OpenAIProvider) instead of resolving them from the DI Container (container.git, await container.llm('openai')); depend on the interface, not the impl. Should NOT claim `new RepoRepository(container.db)` is wrong — that is the allowed pattern.",
+      "assertions": [
+        { "text": "Flags that the service constructs concrete adapters with `new` (SimpleGitClient and/or OpenAIProvider)", "passed": null, "evidence": "" },
+        { "text": "Recommends resolving adapters via the DI Container (container.git / container.llm) — depend on the interface, not the implementation", "passed": null, "evidence": "" },
+        { "text": "Notes the external SDK / secret leaking into the application ring (openai, simple-git, or process.env for keys)", "passed": null, "evidence": "" },
+        { "text": "Does NOT wrongly flag `new RepoRepository(container.db)` — a service constructing its own repository is the allowed pattern", "passed": null, "evidence": "" }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "core-impurity",
+      "prompt": "This is `reviewer-core/src/review/run.ts`. I added persistence and a GitHub comment right where the review is produced so callers don't have to. Does this fit reviewer-core?",
+      "files": ["fixtures/03-core-run/run.ts"],
+      "expected_output": "Flags that reviewer-core must stay pure: importing postgres (and running SQL) and octokit (and posting a comment) breaks core purity. Persistence and GitHub posting belong in the caller (server persists + streams; the CI runner posts); the core should take inputs and return data.",
+      "assertions": [
+        { "text": "Flags reviewer-core importing postgres and running SQL as a purity violation", "passed": null, "evidence": "" },
+        { "text": "Flags reviewer-core importing octokit and posting a GitHub comment as a purity violation", "passed": null, "evidence": "" },
+        { "text": "Explains the core must return data and let the CALLER (server / CI runner) do persistence + GitHub posting", "passed": null, "evidence": "" },
+        { "text": "Does NOT flag the injected LLMProvider call or the pure prompt/grounding/score logic as wrong", "passed": null, "evidence": "" }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "impure-helper-with-clean-distractor",
+      "prompt": "Two files from `server/src/modules/agents/` — `helpers.ts` and `routes.ts`. Review them for any layering issues before I open the PR.",
+      "files": ["fixtures/04-agents-module/helpers.ts", "fixtures/04-agents-module/routes.ts"],
+      "expected_output": "Flags that helpers.ts is impure — resolveDefaultModel imports db/client + drizzle and runs a query; helpers must stay pure (that query belongs in a repository/service). Should NOT flag the pure toAgentDto mapper, the AGENT_JOB_KIND constant, or the clean routes.ts (which correctly delegates to a service).",
+      "assertions": [
+        { "text": "Flags that helpers.ts is impure — resolveDefaultModel imports db/client + drizzle and runs a query", "passed": null, "evidence": "" },
+        { "text": "Recommends the query move to a repository/service so helpers stay pure", "passed": null, "evidence": "" },
+        { "text": "Does NOT flag the pure toAgentDto DTO mapper or the AGENT_JOB_KIND constant", "passed": null, "evidence": "" },
+        { "text": "Does NOT flag routes.ts — it correctly delegates to a service with no DB/SDK imports", "passed": null, "evidence": "" }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "cross-module-repository-reach",
+      "prompt": "Review `server/src/modules/reviews/service.ts` before I open the PR. The reviews module needs some repo metadata to build the diff — is the way I'm getting it okay?",
+      "files": ["fixtures/05-reviews-service/service.ts"],
+      "expected_output": "Flags that the reviews service imports and uses another module's repository (RepoRepository from ../repos/repository.js) — reaching into the repos slice's private infra ring. A module's public seam is its service; the fix is to call the repos module's service (or a shared @devdigest/shared port), not its repository. Must NOT flag `new ReviewRepository(container.db)` (own-module repository, allowed), the container.git / container.llm usage, or the reviewer-core call.",
+      "assertions": [
+        { "text": "Flags that the reviews service reaches into ANOTHER module's repository (RepoRepository from ../repos) — cross-module infra coupling", "passed": null, "evidence": "" },
+        { "text": "Recommends going through the repos module's service (its public seam) or a shared port instead of importing its repository", "passed": null, "evidence": "" },
+        { "text": "Does NOT flag `new ReviewRepository(container.db)` — using the module's OWN repository is the allowed pattern", "passed": null, "evidence": "" },
+        { "text": "Does NOT flag the container.git / container.llm resolution or the reviewer-core reviewPullRequest call", "passed": null, "evidence": "" },
+        { "text": "Treats it as a hard, blocking violation (CRITICAL) rather than a soft suggestion/nit", "passed": null, "evidence": "" },
+        { "text": "Ties it to a mechanical rule the dependency-cruiser / arch:check enforces (rather than saying it passes arch:check and only a human can catch it)", "passed": null, "evidence": "" }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "laundered-db-in-presenter",
+      "prompt": "Here's the whole `server/src/modules/runs/` module before I open the PR — routes.ts, service.ts, presenter.ts, repository.ts, constants.ts. The routes look thin and everything goes through the service; can you review the module for any layering / boundary problems?",
+      "files": ["fixtures/06-runs-module/routes.ts", "fixtures/06-runs-module/service.ts", "fixtures/06-runs-module/presenter.ts", "fixtures/06-runs-module/repository.ts", "fixtures/06-runs-module/constants.ts"],
+      "expected_output": "Flags that presenter.ts runs Drizzle queries (imports drizzle-orm + db/schema) even though it is not a repository — laundered I/O. The route and service read clean, but getRunView passes container.db into the presenter, so the DB is reached transitively through a non-repository file. Fix: move the enrichment query into RunRepository (a join / method) and have the presenter map pure data. Must NOT flag repository.ts (which legitimately imports drizzle-orm + db/schema — it IS the repository), nor the pure constants.ts, nor the clean routes.ts.",
+      "assertions": [
+        { "text": "Flags that presenter.ts imports the DB toolkit (drizzle-orm + db/schema) and runs queries despite not being a repository — misplaced/laundered I/O", "passed": null, "evidence": "" },
+        { "text": "Traces the leak across files — recognises the clean-looking route/service reach the DB transitively because getRunView passes container.db into the presenter", "passed": null, "evidence": "" },
+        { "text": "Recommends moving the enrichment query into RunRepository (repository ring) and keeping the presenter a pure mapper", "passed": null, "evidence": "" },
+        { "text": "Does NOT flag repository.ts — importing drizzle-orm + db/schema there is correct (it IS the repository ring)", "passed": null, "evidence": "" },
+        { "text": "Does NOT flag the pure constants.ts or the clean routes.ts as violations", "passed": null, "evidence": "" }
+      ]
+    }
+  ]
+}

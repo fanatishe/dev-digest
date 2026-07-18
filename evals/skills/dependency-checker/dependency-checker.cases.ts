@@ -42,10 +42,13 @@ export const cases: SkillCase[] = [
     name: "full report follows the required 5-section structure with a Mermaid graph",
     kind: "quality",
     prompt: `Run a dependency check on this repo. I want the full report: graph, sizes, prioritized findings, recommendations.\n\n${REPO_DATA}`,
-    grounding: ["```mermaid", "flowchart"],
+    // Grounding is a hard cheap-tier gate: require only the Mermaid fence. `flowchart` and `graph`
+    // are interchangeable Mermaid keywords, so asserting the literal word "flowchart" here rejected
+    // valid `graph TD` diagrams — a diagram-syntax choice, not a missing diagram.
+    grounding: ["```mermaid"],
     practices: [
       "the report has a section named 'Scope' listing which packages (client, server, reviewer-core, e2e) were analyzed",
-      "the report includes a Mermaid diagram (a fenced ```mermaid code block using flowchart) showing dependency relationships between packages",
+      "the report includes a Mermaid diagram (a fenced ```mermaid code block using flowchart or graph syntax) showing dependency relationships between packages",
       "the report has a section with a size breakdown table showing dependencies and their installed size, not just a vague size statement",
       "the report has a 'Findings & Priorities' section (or equivalently named) that groups findings under explicit severity tiers such as P0, P1, P2, or Info — not an unranked bullet list",
       "the report ends with a Summary section giving 3-5 concrete, actionable takeaways ordered by priority",

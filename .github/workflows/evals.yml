@@ -2,14 +2,19 @@
 #
 # A change detector (evals/scripts/ci-detect.mjs) maps the PR's changed files onto
 # the eval tiers, then three jobs run only what changed:
-#   • a skill changed        → run that skill's evals   (content tier, DeepSeek, no proxy)
-#   • an agent changed        → run that agent's evals   (tool tier, Gemini, LiteLLM proxy)
+#   • a skill changed        → run that skill's evals   (content tier, no proxy)
+#   • an agent changed        → run that agent's evals   (tool tier, LiteLLM proxy)
 #   • a CLAUDE.md / agent / engine change → run the workflow tier (tool tier, non-blocking)
 # A changed artifact with NO evals is SKIPped (logged), never a failure.
 #
 # Runs on OpenRouter (EVAL_BACKEND=openrouter). The key lives in the repo Actions
-# secret OPENROUTER_API_KEY — never in a file. Models are switchable via the
-# workflow_dispatch inputs below (Actions → evals → Run workflow) or by editing the
+# secret OPENROUTER_API_KEY — never in a file.
+#
+# MODELS — the cases are calibrated for Claude (src/config.ts defaults: subject
+# claude-haiku-4-5, judge claude-sonnet-5), so CI runs them on the matching OpenRouter
+# Anthropic slugs rather than cheap surrogates (which can't meet the Claude-tuned bars).
+# The judge is a stronger family than the subject to soften self-preference. Switchable via
+# the workflow_dispatch inputs below (Actions → evals → Run workflow) or by editing the
 # defaults here; no product code changes.
 name: evals
 
@@ -24,10 +29,13 @@ on:
     inputs:
       skills_model:
         description: 'Model slug for the skills (content) tier'
-        default: 'deepseek/deepseek-chat'
+        default: 'anthropic/claude-haiku-4.5'
       tool_model:
         description: 'Model slug for the agents + workflow (tool) tier'
-        default: 'google/gemini-2.5-flash'
+        default: 'anthropic/claude-haiku-4.5'
+      judge_model:
+        description: 'Model slug for the LLM judge (all tiers)'
+        default: 'anthropic/claude-sonnet-5'
 
 permissions:
   contents: read
@@ -38,9 +46,11 @@ concurrency:
 
 env:
   # Model switch (no UI). PR runs have no inputs, so they fall through to the defaults;
-  # a manual run overrides from the Actions tab.
-  SKILLS_MODEL: ${{ inputs.skills_model || 'deepseek/deepseek-chat' }}
-  TOOL_MODEL: ${{ inputs.tool_model || 'google/gemini-2.5-flash' }}
+  # a manual run overrides from the Actions tab. OpenRouter Anthropic slugs use dotted
+  # versions (claude-haiku-4.5), unlike the Anthropic-API ids in src/config.ts (claude-haiku-4-5).
+  SKILLS_MODEL: ${{ inputs.skills_model || 'anthropic/claude-haiku-4.5' }}
+  TOOL_MODEL: ${{ inputs.tool_model || 'anthropic/claude-haiku-4.5' }}
+  JUDGE_MODEL: ${{ inputs.judge_model || 'anthropic/claude-sonnet-5' }}
 
 jobs:
   # ── Job 1: detect what changed → matrix + skip lines (cheap, key-free gate) ──
@@ -95,16 +105,12 @@ jobs:
             echo "- SKIP agents (no evals): \`${{ steps.detect.outputs.skipped_agents }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── Job 2: skills (content tier) — direct OpenRouter call, no proxy, informational ──
-  # Non-blocking: the cases are calibrated for Claude (threshold-1.0 quality bars), but CI runs
-  # cheap surrogate models (DeepSeek). Per the README those runs are "indicative, not blocking",
-  # so a low surrogate score surfaces in the logs without gating the PR.
+  # ── Job 2: skills (content tier) — direct OpenRouter call, no proxy, blocking ──
   skills:
     name: skill:${{ matrix.skill }}
     needs: detect
     if: needs.detect.outputs.skills != '[]'
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -131,19 +137,14 @@ jobs:
         run: pnpm exec vitest run skills/${{ matrix.skill }}
         env:
           EVAL_MODEL: ${{ env.SKILLS_MODEL }}
-          EVAL_JUDGE_MODEL: ${{ env.SKILLS_MODEL }}
+          EVAL_JUDGE_MODEL: ${{ env.JUDGE_MODEL }}
 
-  # ── Job 3: agents (tool tier) — LiteLLM proxy, Gemini, single-threaded, informational ──
-  # Non-blocking for the same reason as the skills tier: the agent cases are Claude-calibrated
-  # (threshold 1.0) and CI runs a surrogate (Gemini Flash), so the score is indicative signal,
-  # not a PR gate. The README already treats non-Anthropic activation cases as "indicative, not
-  # blocking".
+  # ── Job 3: agents (tool tier) — LiteLLM proxy, Claude via OpenRouter, single-threaded, blocking ──
   agents:
     name: agent:${{ matrix.agent }}
     needs: detect
     if: needs.detect.outputs.agents != '[]'
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       max-parallel: 1            # keep OpenRouter concurrency low (README rate-limit caveat)
@@ -174,15 +175,15 @@ jobs:
         run: pnpm exec vitest run --no-file-parallelism agents/${{ matrix.agent }}
         env:
           EVAL_MODEL: ${{ env.TOOL_MODEL }}
-          EVAL_JUDGE_MODEL: ${{ env.TOOL_MODEL }}
+          EVAL_JUDGE_MODEL: ${{ env.JUDGE_MODEL }}
       - if: failure()
         run: docker compose -f proxy/docker-compose.yml logs --tail 100
       - if: always()
         run: docker compose -f proxy/docker-compose.yml down
 
-  # ── Job 4: workflow (tool tier) — LiteLLM proxy, Gemini, INFORMATIONAL ──
-  # Non-blocking: the README warns activation cases on non-Anthropic models are
-  # "indicative, not blocking".
+  # ── Job 4: workflow (tool tier) — LiteLLM proxy, Claude via OpenRouter, INFORMATIONAL ──
+  # Non-blocking: the systemic routing/activation traces are the least deterministic tier
+  # (they depend on the whole on-disk harness), so this stays advisory even on Claude.
   workflow:
     name: workflow
     needs: detect
@@ -214,7 +215,7 @@ jobs:
         run: pnpm exec vitest run --no-file-parallelism workflow
         env:
           EVAL_MODEL: ${{ env.TOOL_MODEL }}
-          EVAL_JUDGE_MODEL: ${{ env.TOOL_MODEL }}
+          EVAL_JUDGE_MODEL: ${{ env.JUDGE_MODEL }}
       - if: failure()
         run: docker compose -f proxy/docker-compose.yml logs --tail 100
       - if: always()

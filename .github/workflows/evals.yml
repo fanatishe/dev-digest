@@ -95,12 +95,16 @@ jobs:
             echo "- SKIP agents (no evals): \`${{ steps.detect.outputs.skipped_agents }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── Job 2: skills (content tier) — direct OpenRouter call, no proxy, blocking ──
+  # ── Job 2: skills (content tier) — direct OpenRouter call, no proxy, informational ──
+  # Non-blocking: the cases are calibrated for Claude (threshold-1.0 quality bars), but CI runs
+  # cheap surrogate models (DeepSeek). Per the README those runs are "indicative, not blocking",
+  # so a low surrogate score surfaces in the logs without gating the PR.
   skills:
     name: skill:${{ matrix.skill }}
     needs: detect
     if: needs.detect.outputs.skills != '[]'
     runs-on: ubuntu-latest
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -129,12 +133,17 @@ jobs:
           EVAL_MODEL: ${{ env.SKILLS_MODEL }}
           EVAL_JUDGE_MODEL: ${{ env.SKILLS_MODEL }}
 
-  # ── Job 3: agents (tool tier) — LiteLLM proxy, Gemini, single-threaded, blocking ──
+  # ── Job 3: agents (tool tier) — LiteLLM proxy, Gemini, single-threaded, informational ──
+  # Non-blocking for the same reason as the skills tier: the agent cases are Claude-calibrated
+  # (threshold 1.0) and CI runs a surrogate (Gemini Flash), so the score is indicative signal,
+  # not a PR gate. The README already treats non-Anthropic activation cases as "indicative, not
+  # blocking".
   agents:
     name: agent:${{ matrix.agent }}
     needs: detect
     if: needs.detect.outputs.agents != '[]'
     runs-on: ubuntu-latest
+    continue-on-error: true
     strategy:
       fail-fast: false
       max-parallel: 1            # keep OpenRouter concurrency low (README rate-limit caveat)

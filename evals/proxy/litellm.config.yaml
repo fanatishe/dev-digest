@@ -20,21 +20,21 @@ model_list:
   # it DISPATCHES a subagent the Claude Agent SDK spawns that nested session on the real Anthropic
   # model id in dash form (e.g. claude-opus-4-8) — which the wildcard route below would forward to
   # OpenRouter as "openrouter/claude-opus-4-8", an invalid slug → HTTP 400 and a dead workflow-tier
-  # trace. Pin those dash-form ids (config.ts defaults + the SDK's default) to the calibrated tool
-  # model's OpenRouter slug so the tier runs on cheap Claude. NOTE: this is a fixed target, so a
+  # trace. Pin those dash-form ids (config.ts defaults + the SDK's default) to the tool-tier
+  # surrogate so the tier runs on the cheap subject. NOTE: this is a fixed target, so a
   # workflow_dispatch tool_model override does NOT reach these nested subagents — the deeper fix is
   # to propagate the eval model into subagent dispatch in src/runtime/run-claude.ts.
   - model_name: "claude-opus-4-8"
     litellm_params:
-      model: "openrouter/anthropic/claude-haiku-4.5"
+      model: "openrouter/google/gemini-2.5-flash"
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: "claude-sonnet-5"
     litellm_params:
-      model: "openrouter/anthropic/claude-haiku-4.5"
+      model: "openrouter/google/gemini-2.5-flash"
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: "claude-haiku-4-5"
     litellm_params:
-      model: "openrouter/anthropic/claude-haiku-4.5"
+      model: "openrouter/google/gemini-2.5-flash"
       api_key: os.environ/OPENROUTER_API_KEY
   # Passthrough: EVAL_MODEL / EVAL_JUDGE_MODEL forwarded verbatim to OpenRouter.
   - model_name: "*"

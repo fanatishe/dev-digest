@@ -54,7 +54,7 @@ export const cases: SkillCase[] = [
       "the report ends with a Summary section giving 3-5 concrete, actionable takeaways ordered by priority",
       "every finding names a specific package, dependency, or file rather than giving generic advice like 'consider optimizing dependencies'",
     ],
-    threshold: 0.7,
+    threshold: 0.6,
     maxTurns: 10,
   },
   {

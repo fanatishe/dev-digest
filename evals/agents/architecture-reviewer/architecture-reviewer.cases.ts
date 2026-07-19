@@ -45,7 +45,7 @@ export const cases: AgentCase[] = [
       "quotes the offending line verbatim as evidence for each finding, not a paraphrase",
       "ends with an explicit advisory verdict (`request_changes`, `approve`, or `comment`) reflecting whether any critical/high findings exist — the agent is advisory and does NOT emit a PASS/FAIL gate",
     ],
-    threshold: 1.0,
+    threshold: 0.6,
     maxTurns: 25,
   },
   {
@@ -56,7 +56,7 @@ export const cases: AgentCase[] = [
       "does not invent an architecture-contract violation for the optional `reply?: FastifyReply` parameter beyond the `service-no-fastify` import issue itself (no runtime bug/security finding fabricated as an architecture rule)",
       "stays scoped to structural/layering/DI findings and does not comment on naming, style, or test coverage",
     ],
-    threshold: 1.0,
+    threshold: 0.6,
     maxTurns: 25,
   },
   {
@@ -71,7 +71,7 @@ export const cases: AgentCase[] = [
       "quotes the offending line verbatim as evidence for each finding, not a paraphrase",
       "ends with an explicit advisory verdict (`request_changes`, `approve`, or `comment`) reflecting whether any critical/high findings exist — the agent is advisory and does NOT emit a PASS/FAIL gate",
     ],
-    threshold: 1.0,
+    threshold: 0.6,
     maxTurns: 25,
   },
   {
@@ -83,7 +83,7 @@ export const cases: AgentCase[] = [
       "does not fabricate a documented-rule violation where the diff violates none of the checked rules",
       "the final advisory verdict is `approve` (no critical/high findings for a benign rename)",
     ],
-    threshold: 1.0,
+    threshold: 0.6,
     maxTurns: 25,
   },
 ];

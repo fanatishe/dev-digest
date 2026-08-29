@@ -25,6 +25,7 @@ import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
+import { SkillsRepository } from '../modules/skills/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
@@ -48,6 +49,12 @@ export interface ContainerOverrides {
   llm?: Partial<Record<'openai' | 'anthropic' | 'openrouter', LLMProvider>>;
   /** repo-intel facade (T1.1+) — tests inject mock RepoIntel implementations. */
   repoIntel?: RepoIntel;
+  /**
+   * Skills data-access facade — the sanctioned way `modules/eval` reads a skill's
+   * body/version for a skill eval case (never a `modules/skills` import nor a
+   * cross-table query). Tests inject a stub here.
+   */
+  skillsRepo?: SkillsRepository;
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
@@ -72,6 +79,7 @@ export class Container {
   // `container.agentsRepo` instead of reaching into another module's folder.
   private _agentsRepo?: AgentsRepository;
   private _reviewRepo?: ReviewRepository;
+  private _skillsRepo?: SkillsRepository;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -98,6 +106,17 @@ export class Container {
 
   get reviewRepo(): ReviewRepository {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
+  }
+
+  /**
+   * Skills data-access facade. Lets `modules/eval` resolve a skill's body/version
+   * for a skill eval case through the composition root instead of importing
+   * `modules/skills` or querying the `skills` table directly (onion boundary).
+   * A test-injected `overrides.skillsRepo` wins, mirroring the other facades.
+   */
+  get skillsRepo(): SkillsRepository {
+    if (this.overrides.skillsRepo) return this.overrides.skillsRepo;
+    return (this._skillsRepo ??= new SkillsRepository(this.db));
   }
 
   get codeIndex(): CodeIndex {

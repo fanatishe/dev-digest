@@ -22,6 +22,17 @@ export {
 // Citation grounding — the mandatory mechanical gate for diff findings.
 export { groundFindings, groundingSummary, type GroundingResult } from './grounding.js';
 
+// Deterministic, ZERO-LLM eval scorer (pure): match + per-case + micro-averaged batch.
+export {
+  match,
+  scoreCase,
+  scoreBatch,
+  type CaseScore,
+  type CaseScoreCounts,
+  type BatchCase,
+  type BatchScore,
+} from './eval/score.js';
+
 // Structured-output helpers (Zod → JSON Schema + parse-with-repair).
 export {
   toJsonSchema,

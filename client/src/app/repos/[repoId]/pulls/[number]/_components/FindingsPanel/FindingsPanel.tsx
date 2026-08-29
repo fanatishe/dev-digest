@@ -7,7 +7,8 @@ import { useTranslations } from "next-intl";
 import { Toggle, EmptyState, type Severity } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
-import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
+import { useFindingAction, usePrReviews } from "../../../../../../../lib/hooks/reviews";
+import { EvalCaseModal } from "@/components/evals/EvalCaseModal";
 import { KEY_TO_ACTION } from "./constants";
 import { visibleFindings } from "./helpers";
 import { s } from "./styles";
@@ -36,6 +37,20 @@ export function FindingsPanel({
   const action = useFindingAction();
   const [hideLow, setHideLow] = React.useState(false);
   const [focusIdx, setFocusIdx] = React.useState(0);
+  // The finding currently being turned into an eval case (owns the modal).
+  const [evalTarget, setEvalTarget] = React.useState<FindingRecord | null>(null);
+
+  // An eval case must attribute to an agent, so a finding can only be turned into
+  // one when its owning review has an agent_id (AC-3). The review set is the same
+  // cache the parent ReviewRunAccordion already populated (["reviews", prId]).
+  const reviews = usePrReviews(prId).data;
+  const agentByReview = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of reviews ?? []) if (r.agent_id) map.set(r.id, r.agent_id);
+    return map;
+  }, [reviews]);
+  const agentIdFor = (f: FindingRecord): string | null => agentByReview.get(f.review_id) ?? null;
+  const evalAgentId = evalTarget ? agentIdFor(evalTarget) : null;
 
   const shown = React.useMemo(() => {
     const list = visibleFindings(findings, hideLow, severity);
@@ -95,10 +110,20 @@ export function FindingsPanel({
               repoFullName={repoFullName}
               headSha={headSha}
               onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
+              onTurnIntoEval={agentIdFor(f) ? () => setEvalTarget(f) : undefined}
             />
           ))
         )}
       </div>
+
+      {evalTarget && evalAgentId && (
+        <EvalCaseModal
+          owner={{ kind: "agent", id: evalAgentId }}
+          finding={evalTarget}
+          prId={prId}
+          onClose={() => setEvalTarget(null)}
+        />
+      )}
     </div>
   );
 }

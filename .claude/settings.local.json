@@ -2,16 +2,17 @@
   "permissions": {
     "allow": [
       "Bash(node_modules/.bin/tsc --noEmit)",
-      "Bash(node_modules/.bin/vitest run *)"
+      "Bash(node_modules/.bin/vitest run *)",
+      "Bash(pnpm typecheck *)"
     ]
   },
   "enabledMcpjsonServers": [
     "devdigest"
   ],
-  "enabledPlugins": {
-    "github@claude-plugins-official": true
-  },
   "disabledMcpjsonServers": [
     "devdigest"
-  ]
+  ],
+  "enabledPlugins": {
+    "github@claude-plugins-official": true
+  }
 }

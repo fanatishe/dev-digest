@@ -113,6 +113,20 @@
       "when": 1784251476602,
       "tag": "0015_sweet_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784421636609,
+      "tag": "0016_uneven_kingpin",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784452932613,
+      "tag": "0017_thick_bloodaxe",
+      "breakpoints": true
     }
   ]
 }

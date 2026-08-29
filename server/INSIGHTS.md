@@ -349,6 +349,41 @@ for the rubric.
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
 
+### 2026-07-19 (Eval Pipeline L06 — modules/eval + eval_batches + skills facade)
+Built `modules/eval` (routes→service→run-executor→repository) on the pre-scaffolded `eval_cases`/
+`eval_runs` + a NEW `eval_batches` table (additive migration `0016`, plus `0017` FK indexes). Key
+learnings:
+- **Cross-module data goes through a NEW container facade — and the getter must read `overrides`.**
+  A skill eval case's live run needs `skill.body`/`skill.version` from a skill id, but the eval
+  module may neither import `modules/skills` nor cross-query. Added a `container.skillsRepo` getter.
+  Gotcha: `agentsRepo`/`reviewRepo` getters do **not** read `this.overrides`; the adapter getters
+  (`git`/`codeIndex`/`repoIntel`) do — so a facade that tests must inject
+  (`ContainerOverrides.skillsRepo`) MUST use the override-checking form, or a literal `agentsRepo`
+  mirror leaves the field dead.
+- **Additive-schema false positive.** Attaching a Drizzle index forces the single-arg
+  `pgTable(name,{…})` into the two-arg `(name,{…},(t)=>({…}))` form, re-indenting every existing
+  column line — the shared-table guard (and a naïve line-diff) reads that as "altering existing
+  columns." Verify additivity against the **generated migration SQL** (`CREATE TABLE`/`ADD COLUMN`/
+  `CREATE INDEX` only, zero `DROP`/`ALTER COLUMN`), not the schema-file line diff. Related:
+  `pr-self-review` diffs `merge-base(main)..working-tree`, so in a concurrent multi-agent tree it
+  attributes siblings' edits to your diff — interpret CRITICALs against your Owns glob.
+- **Zero-LLM eval proof = mock call-count**, not a return value (`service.it.test.ts`: after run-all
+  over K cases, `mock.calls.filter(completeStructured).length === K`). Skill-host runs use the
+  workspace-default provider (`EVAL_SKILL_HOST_PROVIDER='openrouter'`), NOT `openai` — inject the
+  mock under `{ llm: { openrouter: mock } }` and assert the assembled input via the recorded
+  `req.messages` (system starts with `EVAL_SKILL_HOST_PROMPT`, user carries the verbatim skill body).
+- **Hermetic eval inputs**: eval reuses `reviewPullRequest` with repo_intel OFF (no
+  `callers`/`repoMap`/`intent`/`prDescription`) so only the prompt moves the metrics. Derive a
+  case's pinned repro version from the **last run's `agent_version`**, not the owner — one query path
+  serves both agent and skill owners.
+- **Seeding a real-scorer trend**: back-dating `eval_runs`/`eval_batches` needs RAW drizzle inserts
+  (`InsertEvalBatch/Run` don't expose `ran_at`). The pinned-version repro window reads "last run's
+  version," so seeded ad-hoc "Run 5×" rows must be the NEWEST `ran_at` at that version (batch runs
+  back-dated days ago) to read a clean 5/5 vs 2/5. Prove seeded metrics are *real* scorer output by
+  exporting the `BatchCase[]` builder and having BOTH seed and test call it, asserting equality
+  (`toBeCloseTo(_,10)` for float8). Gold-set demo diffs trip the secret-scanner unless you avoid the
+  `(key|token|secret|password)\s*[:=]\s*"…"` shape — represent issues as SQL-concat/null-deref/N+1.
+
 ### 2026-07-17 (Risk Brief SPEC-02 — built LLM brief, then REVERTED to findings-derived)
 An LLM `modules/brief` (`POST /pulls/:id/brief` → one `completeStructured` → cached `pr_brief`) was
 built, then **removed the same session** when the design review showed Risk Areas / Review Focus

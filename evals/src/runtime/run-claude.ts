@@ -31,6 +31,12 @@ export interface Result {
 export interface RunOptions {
   systemPrompt?: string;
   allowedTools?: string[];
+  /**
+   * Tools removed from the model's context entirely. Unlike `allowedTools` (which only auto-approves
+   * and is a no-op under bypassPermissions), `disallowedTools` is the SDK's real restrict knob — it
+   * holds even under bypassPermissions. workflowTask uses it to keep the live-repo session read-only.
+   */
+  disallowedTools?: string[];
   maxTurns?: number;
   cwd?: string;
   model?: string;
@@ -62,9 +68,12 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
   const options: Options = {
     model: opts.model ?? EVAL_MODEL,
     maxTurns: opts.maxTurns ?? MAX_TURNS,
-    permissionMode: "bypassPermissions", // safe: evals only read/plan and tools are allow-listed
+    // bypassPermissions auto-approves every tool, so read-only safety comes from disallowedTools
+    // (a hard, context-level removal) — not allowedTools, which only auto-approves under this mode.
+    permissionMode: "bypassPermissions",
     systemPrompt,
     allowedTools,
+    ...(opts.disallowedTools ? { disallowedTools: opts.disallowedTools } : {}),
     cwd: opts.cwd ?? REPO_ROOT,
     // Default: do NOT load on-disk config — isolates the injected artifact. workflowTask overrides.
     settingSources: opts.settingSources ?? [],
@@ -144,7 +153,14 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     }
   } catch (err) {
     isError = true;
-    if (!resultText && textParts.length === 0) {
+    // "Usable" is not just prose. Trace-based workflow evals assert on the tool/subagent/skill/
+    // read trace, so a run that collected any of those produced a real result even if it emitted
+    // no assistant text before erroring (e.g. a negative-activation case that spends its whole
+    // turn budget on read-only tool calls, never activates the skill, and hits max-turns). Only
+    // rethrow when NOTHING at all was captured — text and trace both empty.
+    const collectedTrace =
+      tools.length > 0 || reads.length > 0 || skills.length > 0 || subagents.length > 0;
+    if (!resultText && textParts.length === 0 && !collectedTrace) {
       throw err; // nothing usable collected — surface the failure
     }
   }

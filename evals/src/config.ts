@@ -26,6 +26,15 @@ export const COST_REGRESSION_RATIO = 1.25; // candidate mean tokens > 125% of ba
 export const SPAWN_TOOLS = new Set(["Task", "Agent"]);
 // workflowTask runs against the LIVE repo with bypassPermissions — keep this read-only.
 export const WORKFLOW_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Task", "Agent", "Skill"];
+// NOTE: under permissionMode:"bypassPermissions" the SDK's `allowedTools` only auto-APPROVES —
+// it does NOT restrict the toolset, so the list above can't keep the session read-only on its own.
+// The real restrict knob is `disallowedTools`, which removes a tool from the model's context
+// entirely ("cannot be used, even if they would otherwise be allowed"). We deny the mutating +
+// shell tools so a workflow session (a) can't take real actions in the live repo, and (b) is
+// forced to read files through the `Read` tool — otherwise the model runs `cat`/`grep` via Bash
+// and the file-read trace the evals assert on is never recorded (a systemic source of flake).
+// Scoped to workflowTask only: agentTask must keep Bash (e.g. architecture-reviewer runs dep-cruiser).
+export const WORKFLOW_DISALLOWED_TOOLS = ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"];
 
 // --- Output verbosity -------------------------------------------------------
 // Set EVAL_QUIET to suppress per-run trace/verdict spam during multi-run aggregation.

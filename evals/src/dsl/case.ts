@@ -132,7 +132,18 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
           record(c.name, { result });
         }
       } else if (c.kind === "activation") {
-        const result = await workflowTask(c.prompt, { maxTurns: c.maxTurns });
+        // A positive case is PROVEN the instant the skill engages — stop there (like dispatch/trace),
+        // so we never pay for the skill's heavy body (e.g. dependency-checker's full package audit,
+        // which alone can burn the whole turn budget and approach the test timeout). A negative case
+        // must run its full budget: only exhausting the turns confirms the skill stayed dormant.
+        const result = await workflowTask(c.prompt, {
+          maxTurns: c.maxTurns,
+          stopWhen: c.shouldActivate
+            ? (p) =>
+                p.skillsInvoked.some((s) => s === c.skill || s.endsWith(`:${c.skill}`)) ||
+                p.filesRead.some((f) => f.includes(`skills/${c.skill}/SKILL.md`))
+            : undefined,
+        });
         logTrace(c.name, result);
         try {
           expect(

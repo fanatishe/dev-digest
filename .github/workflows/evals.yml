@@ -226,6 +226,10 @@ jobs:
         env:
           EVAL_MODEL: ${{ env.WORKFLOW_MODEL }}
           EVAL_JUDGE_MODEL: ${{ env.WORKFLOW_MODEL }}
+          # Cases marked useStrongModel (restraint tests) run on this instead of WORKFLOW_MODEL —
+          # a MANUAL-ONLY-skill non-activation check needs a model that follows instructions, which
+          # cheap gemini can't. OpenRouter slug form (the proxy routes anthropic/* to real sonnet).
+          EVAL_STRONG_MODEL: ${{ env.AGENTS_MODEL }}
       - if: failure()
         run: docker compose -f proxy/docker-compose.yml logs --tail 100
       - if: always()

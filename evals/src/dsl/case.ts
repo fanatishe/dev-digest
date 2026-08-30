@@ -9,7 +9,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, expect, type TaskContext } from "vitest";
-import { DEFAULT_THRESHOLD, isInfraError } from "../config.js";
+import { DEFAULT_THRESHOLD, STRONG_MODEL, isInfraError } from "../config.js";
 import { skillTask, agentTask, workflowTask } from "../tasks.js";
 import { runClaude, type Result, type RunOptions } from "../runtime/run-claude.js";
 import { patternMatch } from "../scoring/pattern-match.js";
@@ -59,6 +59,13 @@ export type WorkflowCase =
       skill: string;
       shouldActivate: boolean;
       maxTurns?: number;
+      /**
+       * Run this case on STRONG_MODEL instead of the tier's EVAL_MODEL. Use for a restraint case
+       * (shouldActivate:false on a near-miss): it needs a model that can honor "MANUAL ONLY", which
+       * a cheap tier model can't — so the cheap model over-triggers and measures its own weakness,
+       * not the skill's description. Pinning to a capable model measures the artifact, as intended.
+       */
+      useStrongModel?: boolean;
     }
   | {
       kind: "contrast";
@@ -154,6 +161,7 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
         // must run its full budget: only exhausting the turns confirms the skill stayed dormant.
         const result = await workflowTask(c.prompt, {
           maxTurns: c.maxTurns,
+          ...(c.useStrongModel ? { model: STRONG_MODEL } : {}),
           stopWhen: c.shouldActivate
             ? (p) =>
                 p.skillsInvoked.some((s) => s === c.skill || s.endsWith(`:${c.skill}`)) ||

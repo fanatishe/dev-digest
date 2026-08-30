@@ -9,6 +9,13 @@
 export const EVAL_MODEL = process.env.EVAL_MODEL ?? "claude-haiku-4-5";
 export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "claude-sonnet-5";
 export const MAX_TURNS = Number(process.env.EVAL_MAX_TURNS ?? "8");
+// A strong, instruction-following model for the few cases that measure RESTRAINT (a MANUAL-ONLY
+// skill must NOT auto-activate on a near-miss prompt). Such a case is only meaningful on a model
+// that can honor "MANUAL ONLY" — a cheap model (gemini-2.5-flash) over-triggers regardless of how
+// the skill is written, so running it there measures the model's weakness, not the artifact. The
+// value is a backend-native slug: on the subscription an Anthropic id ("claude-sonnet-5"); on the
+// openrouter backend set EVAL_STRONG_MODEL to the OpenRouter form ("anthropic/claude-sonnet-5").
+export const STRONG_MODEL = process.env.EVAL_STRONG_MODEL ?? "claude-sonnet-5";
 // Internal per-run deadline (ms). Must sit BELOW vitest's testTimeout (240_000): a proxy/billing
 // stall (OpenRouter 402 → Retry-After 120s, retried) can otherwise consume the whole test timeout
 // as a HARD vitest kill, so the runner never regains control to classify the fault. Aborting at this

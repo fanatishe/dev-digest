@@ -10,12 +10,16 @@
 # Runs on OpenRouter (EVAL_BACKEND=openrouter). The key lives in the repo Actions
 # secret OPENROUTER_API_KEY — never in a file.
 #
-# MODELS — the skills (content) tier runs on cheap DeepSeek. The tool tier (agents + workflow)
-# runs on a stronger model (claude-sonnet-5): the strict architecture-reviewer eval requires the
-# model to cite DevDigest-specific onion rule identifiers (service-no-fastify, core-purity-no-io —
-# real names in .claude/skills/onion-architecture) that cheap models won't emit. The judge follows
-# the tier's subject model; case thresholds are 0.6. Switchable via the workflow_dispatch inputs
-# below (Actions → evals → Run workflow) or by editing the defaults here; no product code changes.
+# MODELS — three independent knobs, one per tier, because the tiers need different strengths:
+#   • skills (content)  → cheap DeepSeek. Pure content quality; a small model is fine.
+#   • agents (tool)     → claude-sonnet-5. The strict architecture-reviewer eval requires the model
+#       to DETECT onion-layer violations in a diff AND cite DevDigest rule identifiers
+#       (service-no-fastify, core-purity-no-io — real names in .claude/skills/onion-architecture).
+#       Measured: gemini-2.5-flash misreads the diff and approves violating code (1/6) — too weak here.
+#   • workflow (tool)   → gemini-2.5-flash. This tier only asserts routing/dispatch/activation TRACES,
+#       which a cheap fast model handles (measured 11/13). No reason to pay for sonnet here.
+# The judge follows each tier's subject model; case thresholds are 0.6. All three are switchable via
+# the workflow_dispatch inputs below (Actions → evals → Run workflow) or by editing the defaults.
 name: evals
 
 on:
@@ -30,9 +34,12 @@ on:
       skills_model:
         description: 'Model slug for the skills (content) tier'
         default: 'deepseek/deepseek-chat'
-      tool_model:
-        description: 'Model slug for the agents + workflow (tool) tier'
+      agents_model:
+        description: 'Model slug for the agents (tool) tier — needs rule-ID citation, keep strong'
         default: 'anthropic/claude-sonnet-5'
+      workflow_model:
+        description: 'Model slug for the workflow (tool) tier — trace-only, cheap model is fine'
+        default: 'google/gemini-2.5-flash'
 
 permissions:
   contents: read
@@ -43,9 +50,10 @@ concurrency:
 
 env:
   # Model switch (no UI). PR runs have no inputs, so they fall through to the defaults;
-  # a manual run overrides from the Actions tab.
+  # a manual run overrides from the Actions tab. One knob per tier — see the MODELS note above.
   SKILLS_MODEL: ${{ inputs.skills_model || 'deepseek/deepseek-chat' }}
-  TOOL_MODEL: ${{ inputs.tool_model || 'anthropic/claude-sonnet-5' }}
+  AGENTS_MODEL: ${{ inputs.agents_model || 'anthropic/claude-sonnet-5' }}
+  WORKFLOW_MODEL: ${{ inputs.workflow_model || 'google/gemini-2.5-flash' }}
 
 jobs:
   # ── Job 1: detect what changed → matrix + skip lines (cheap, key-free gate) ──
@@ -169,8 +177,8 @@ jobs:
       - name: eval agent
         run: pnpm exec vitest run --no-file-parallelism agents/${{ matrix.agent }}
         env:
-          EVAL_MODEL: ${{ env.TOOL_MODEL }}
-          EVAL_JUDGE_MODEL: ${{ env.TOOL_MODEL }}
+          EVAL_MODEL: ${{ env.AGENTS_MODEL }}
+          EVAL_JUDGE_MODEL: ${{ env.AGENTS_MODEL }}
       - if: failure()
         run: docker compose -f proxy/docker-compose.yml logs --tail 100
       - if: always()
@@ -216,8 +224,8 @@ jobs:
       - name: eval workflow
         run: pnpm exec vitest run --no-file-parallelism workflow
         env:
-          EVAL_MODEL: ${{ env.TOOL_MODEL }}
-          EVAL_JUDGE_MODEL: ${{ env.TOOL_MODEL }}
+          EVAL_MODEL: ${{ env.WORKFLOW_MODEL }}
+          EVAL_JUDGE_MODEL: ${{ env.WORKFLOW_MODEL }}
       - if: failure()
         run: docker compose -f proxy/docker-compose.yml logs --tail 100
       - if: always()

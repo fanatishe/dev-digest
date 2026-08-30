@@ -53,4 +53,13 @@ export const s = {
   } satisfies CSSProperties,
   recent: { marginTop: 30 } satisfies CSSProperties,
   recentList: { marginTop: 10 } satisfies CSSProperties,
+  runError: {
+    padding: "10px 14px",
+    borderRadius: 8,
+    border: "1px solid var(--warn)",
+    background: "var(--warn-bg, transparent)",
+    color: "var(--warn)",
+    fontSize: 12.5,
+    marginBottom: 16,
+  } satisfies CSSProperties,
 } as const;

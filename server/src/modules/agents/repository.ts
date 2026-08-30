@@ -145,6 +145,22 @@ export class AgentsRepository {
     return row;
   }
 
+  /**
+   * Snapshot an agent's CURRENT config at its current version if that version was
+   * never recorded (idempotent — `snapshotVersion` is `onConflictDoNothing`).
+   *
+   * Backfills agents created OUTSIDE `insert()`/`update()` — notably the seed's
+   * built-in reviewers, which are bulk-inserted raw and would otherwise have no
+   * `agent_versions` row, breaking any eval run/Compare/Promote that resolves a
+   * pinned version (`getVersion` → "Agent version not found"). Captures whatever
+   * skills are linked NOW, so calling it AFTER `linkSkill` records them correctly.
+   */
+  async ensureCurrentVersionSnapshot(workspaceId: string, agentId: string): Promise<void> {
+    const row = await this.getById(workspaceId, agentId);
+    if (!row) return;
+    await this.snapshotVersion(row, row.version);
+  }
+
   private async snapshotVersion(row: AgentRow, version: number): Promise<void> {
     const skills = await this.skillIdsForAgent(row.id);
     await this.db

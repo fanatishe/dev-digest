@@ -455,6 +455,18 @@ Flag as WARNING if the diff:
     await agentsRepo.linkSkill(apiAgent!.id, apiSkillIds[i]!, i);
   }
 
+  // ---- Version snapshots for the built-in agents -------------------------------
+  // The reviewers above are bulk-inserted RAW (not via `agentsRepo.insert`), so
+  // they never got an `agent_versions` row. Any eval run/Compare/Promote resolves
+  // the agent's pinned version via `getVersion` and would fail ("Agent version not
+  // found"). Snapshot each agent's current config (with its now-linked skills) at
+  // its current version. Idempotent — agents that already have the snapshot (the
+  // gold-set agent) are skipped by `onConflictDoNothing`. Re-running `db:seed`
+  // therefore BACKFILLS existing DBs.
+  for (const a of await agentsRepo.list(workspaceId)) {
+    await agentsRepo.ensureCurrentVersionSnapshot(workspaceId, a.id);
+  }
+
   // ---- Eval gold-set (L06) — real scorer output, no LLM ------------------------
   await seedEvalGoldset(db, workspaceId, userId);
 

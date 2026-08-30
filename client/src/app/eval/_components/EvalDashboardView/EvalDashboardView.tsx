@@ -22,7 +22,8 @@ import {
 } from "@devdigest/ui";
 import type { EvalDashboardRow } from "@devdigest/shared";
 import { AppShell } from "@/components/app-shell";
-import { useEvalDashboard } from "@/lib/hooks/evals";
+import { useEvalDashboard, useDashboardRunAll } from "@/lib/hooks/evals";
+import { useSecretsStatus } from "@/lib/hooks/core";
 import { pct, passSummary, versionLabel, shortWhen } from "../../helpers";
 import { COPY } from "./constants";
 import { s } from "./styles";
@@ -63,6 +64,9 @@ function AgentRow({ row }: { row: EvalDashboardRow }) {
 
 export function EvalDashboardView() {
   const { data, isLoading, isError, refetch } = useEvalDashboard();
+  const secrets = useSecretsStatus();
+  const runAll = useDashboardRunAll();
+  const hasKey = secrets.data?.openrouter ?? false;
 
   return (
     <AppShell crumb={[{ label: COPY.crumbLab }, { label: COPY.crumb }]}>
@@ -72,13 +76,24 @@ export function EvalDashboardView() {
             <h1 style={s.h1}>{COPY.title}</h1>
             <p style={s.subtitle}>{COPY.subtitle}</p>
           </div>
-          {/* Live "Run all agents" needs a provider key + a dashboard run-all hook
-              (not exported by WP-D); it degrades to a disabled affordance so the
-              seeded demo path never triggers a live call (AC-27). */}
-          <Button kind="secondary" size="sm" icon="Play" disabled title={COPY.runAllHint}>
+          {/* Live "Run all agents" runs each agent-with-cases once. Gated on a
+              provider key: without one it stays disabled with a hint; with one a
+              failed live run degrades to a non-throwing notice (AC-27). */}
+          <Button
+            kind="secondary"
+            size="sm"
+            icon="Play"
+            loading={runAll.isPending}
+            disabled={!hasKey || runAll.isPending}
+            title={hasKey ? undefined : COPY.runAllHint}
+            onClick={() => runAll.mutate()}
+          >
             {COPY.runAll}
           </Button>
         </div>
+
+        {/* Live run-all degrades to a non-throwing inline notice on failure (AC-27). */}
+        {runAll.isError && <div style={s.runError}>{COPY.runError}</div>}
 
         {isLoading && (
           <div style={s.list}>

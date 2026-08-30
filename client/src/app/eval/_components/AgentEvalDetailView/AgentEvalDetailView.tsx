@@ -15,6 +15,7 @@ import { MetricCard, Button, ErrorState, Skeleton, SectionLabel, Icon } from "@d
 import { AppShell } from "@/components/app-shell";
 import { useAgent } from "@/lib/hooks/agents";
 import { useAgentEvalDashboard, useAgentEvalBatches, useRunAll } from "@/lib/hooks/evals";
+import { useSecretsStatus } from "@/lib/hooks/core";
 import { pct } from "../../helpers";
 import { METRICS } from "../../constants";
 import { DateRangeChip, type DateRange } from "../DateRangeChip";
@@ -36,6 +37,8 @@ export function AgentEvalDetailView({ agentId }: { agentId: string }) {
   const dashboard = useAgentEvalDashboard(agentId, range);
   const batches = useAgentEvalBatches(agentId, range);
   const runAll = useRunAll(agentId);
+  const secrets = useSecretsStatus();
+  const hasKey = secrets.data?.openrouter ?? false;
 
   const [compare, setCompare] = React.useState<{ base: string; head: string } | null>(null);
 
@@ -73,6 +76,8 @@ export function AgentEvalDetailView({ agentId }: { agentId: string }) {
             size="sm"
             icon="Play"
             loading={runAll.isPending}
+            disabled={!hasKey || runAll.isPending}
+            title={hasKey ? undefined : COPY.runAllHint}
             onClick={() => runAll.mutate(undefined)}
           >
             {COPY.runAll}

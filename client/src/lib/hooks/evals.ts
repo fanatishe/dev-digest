@@ -18,6 +18,7 @@ import type {
   EvalCaseWithRuns,
   EvalCompare,
   EvalDashboard,
+  EvalDashboardRunAllResult,
   EvalOwnerKind,
   EvalRunAllResult,
   EvalRunRecord,
@@ -170,6 +171,23 @@ export function useRunAll(agentId: string | null | undefined) {
       qc.invalidateQueries({ queryKey: ["agent-eval-dashboard", agentId] });
       qc.invalidateQueries({ queryKey: ["agent-eval-batches", agentId] });
       qc.invalidateQueries({ queryKey: ["eval-cases", "agent", agentId] });
+    },
+  });
+}
+
+/** Whole-dashboard run-all → one batch per agent that has cases (AC-22). Needs a
+   provider key; callers gate the affordance on `useSecretsStatus` and surface the
+   error non-throwingly when a live run fails (AC-27). */
+export function useDashboardRunAll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<EvalDashboardRunAllResult>("/eval/dashboard/run-all", undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["eval-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["agent-eval-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["agent-eval-batches"] });
+      qc.invalidateQueries({ queryKey: ["eval-cases"] });
     },
   });
 }

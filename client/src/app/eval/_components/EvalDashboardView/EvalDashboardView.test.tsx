@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import type { EvalAgentDashboard, EvalBatch, EvalDashboardRow } from "@devdigest/shared";
 
 // AppShell pulls in the full frame (repo hooks, command palette) — stub it to a
@@ -24,8 +24,21 @@ const dash = {
   isLoading: false,
   isError: false,
 };
+// Run-all mutation + secrets status — driven per test to exercise the key gate.
+const runAll = { isPending: false, isError: false, mutate: vi.fn() };
+const secrets = {
+  data: { openai: false, anthropic: false, openrouter: false } as {
+    openai: boolean;
+    anthropic: boolean;
+    openrouter: boolean;
+  },
+};
 vi.mock("@/lib/hooks/evals", () => ({
   useEvalDashboard: () => ({ ...dash, refetch: vi.fn() }),
+  useDashboardRunAll: () => runAll,
+}));
+vi.mock("@/lib/hooks/core", () => ({
+  useSecretsStatus: () => secrets,
 }));
 
 import { EvalDashboardView } from "./EvalDashboardView";
@@ -35,6 +48,10 @@ afterEach(() => {
   dash.data = undefined;
   dash.isLoading = false;
   dash.isError = false;
+  runAll.isPending = false;
+  runAll.isError = false;
+  runAll.mutate = vi.fn();
+  secrets.data = { openai: false, anthropic: false, openrouter: false };
 });
 
 function batch(id: string, version: number): EvalBatch {
@@ -109,5 +126,34 @@ describe("EvalDashboardView", () => {
   it("renders a non-throwing loading state (AC-27)", () => {
     dash.isLoading = true;
     expect(() => render(<EvalDashboardView />)).not.toThrow();
+  });
+
+  it("disables 'Run all agents' with a hint when no OpenRouter key is configured (AC-27)", () => {
+    dash.data = { agents: [], recent_batches: [] };
+    secrets.data = { openai: false, anthropic: false, openrouter: false };
+    render(<EvalDashboardView />);
+
+    const btn = screen.getByRole("button", { name: /run all agents/i });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("title", expect.stringMatching(/openrouter key/i));
+  });
+
+  it("enables 'Run all agents' and triggers the run-all when a key is present", () => {
+    dash.data = { agents: [], recent_batches: [] };
+    secrets.data = { openai: false, anthropic: false, openrouter: true };
+    render(<EvalDashboardView />);
+
+    const btn = screen.getByRole("button", { name: /run all agents/i });
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    expect(runAll.mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a non-throwing notice when the live run-all fails (AC-27)", () => {
+    dash.data = { agents: [], recent_batches: [] };
+    secrets.data = { openai: false, anthropic: false, openrouter: true };
+    runAll.isError = true;
+    expect(() => render(<EvalDashboardView />)).not.toThrow();
+    expect(screen.getByText(/live run failed/i)).toBeInTheDocument();
   });
 });

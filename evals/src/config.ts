@@ -9,6 +9,12 @@
 export const EVAL_MODEL = process.env.EVAL_MODEL ?? "claude-haiku-4-5";
 export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "claude-sonnet-5";
 export const MAX_TURNS = Number(process.env.EVAL_MAX_TURNS ?? "8");
+// Internal per-run deadline (ms). Must sit BELOW vitest's testTimeout (240_000): a proxy/billing
+// stall (OpenRouter 402 → Retry-After 120s, retried) can otherwise consume the whole test timeout
+// as a HARD vitest kill, so the runner never regains control to classify the fault. Aborting at this
+// deadline turns that hang into a returnable isError Result the runners can infra-skip. Keep the
+// margin (≥30s under testTimeout) so the abort+teardown finishes before vitest fires.
+export const RUN_DEADLINE_MS = Number(process.env.EVAL_RUN_DEADLINE_MS ?? "200000");
 
 // --- Configuration tag ------------------------------------------------------
 // "candidate" = artifact injected (normal). "baseline" = no artifact (benchmark lift baseline).
@@ -34,7 +40,33 @@ export const WORKFLOW_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Task", "Agent", 
 // forced to read files through the `Read` tool — otherwise the model runs `cat`/`grep` via Bash
 // and the file-read trace the evals assert on is never recorded (a systemic source of flake).
 // Scoped to workflowTask only: agentTask must keep Bash (e.g. architecture-reviewer runs dep-cruiser).
-export const WORKFLOW_DISALLOWED_TOOLS = ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"];
+// NOTE the shell tool has TWO names across backends: the Agent SDK's native "Bash" and the
+// OpenRouter/proxy path's "run_bash_command" (confirmed in CI traces). Deny both, or the read-only
+// guard silently leaks the shell on the openrouter backend.
+export const WORKFLOW_DISALLOWED_TOOLS = [
+  "Bash",
+  "run_bash_command",
+  "Write",
+  "Edit",
+  "MultiEdit",
+  "NotebookEdit",
+];
+
+// --- Infra-fault detection --------------------------------------------------
+// A model call can fail for reasons that have NOTHING to do with the artifact under test: the
+// OpenRouter account runs out of in-flight credit budget (HTTP 402), the gateway drops the socket,
+// or the upstream returns 200-with-no-choices. On the Agent SDK path these surface as the assistant
+// TEXT (e.g. "API Error: 402 … in_flight_budget_exhausted"), so the judge scores the empty output 0
+// and a billing blip masquerades as a content regression. Match those signatures so the runners can
+// SKIP such a case instead of failing it. Keep this list about transport/billing faults only —
+// never add a model-behavior signal here, or a real regression would be silently skipped.
+const INFRA_ERROR_RE =
+  /API Error:|\b402\b|in_flight_budget_exhausted|exceed your available credits|rate.?limit|\b429\b|ECONNREFUSED|ECONNRESET|socket hang up|fetch failed|returned no choices|Retry-After/i;
+
+/** True when a Result reflects a transport/billing fault, not a real artifact outcome. */
+export function isInfraError(r: { text?: string; isError?: boolean }): boolean {
+  return INFRA_ERROR_RE.test(r.text ?? "");
+}
 
 // --- Output verbosity -------------------------------------------------------
 // Set EVAL_QUIET to suppress per-run trace/verdict spam during multi-run aggregation.

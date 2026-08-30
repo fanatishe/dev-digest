@@ -45,6 +45,15 @@ model_list:
 litellm_settings:
   # Deterministic evals: never retry-with-jitter behind our back; the runners own retries.
   drop_params: true
+  # FAIL FAST. Without this, LiteLLM falls back to its default retry, which HONORS an upstream
+  # `Retry-After` header — so an OpenRouter 402 `in_flight_budget_exhausted` (Retry-After: 120)
+  # is retried ~twice and a single call hangs ~240s, tripping vitest's testTimeout and stacking
+  # 8 tests into a ~30-minute job. num_retries:0 surfaces the 402 immediately; request_timeout
+  # caps any single upstream call well under the eval runner's internal deadline (RUN_DEADLINE_MS
+  # =200s) and vitest's 240s testTimeout, so a stall returns a classifiable error the runner
+  # infra-SKIPs instead of a hard timeout. Transient-402 tolerance lives in the runners, not here.
+  num_retries: 0
+  request_timeout: 120
 
 general_settings:
   # No master_key on purpose: this is an ephemeral local/CI gateway. It runs in "no-auth" mode,

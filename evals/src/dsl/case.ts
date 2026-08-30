@@ -8,14 +8,28 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, expect } from "vitest";
-import { DEFAULT_THRESHOLD } from "../config.js";
+import { test, expect, type TaskContext } from "vitest";
+import { DEFAULT_THRESHOLD, isInfraError } from "../config.js";
 import { skillTask, agentTask, workflowTask } from "../tasks.js";
 import { runClaude, type Result, type RunOptions } from "../runtime/run-claude.js";
 import { patternMatch } from "../scoring/pattern-match.js";
 import { llmJudge, type Verdict } from "../scoring/llm-judge.js";
 import { logTrace, logVerdict } from "../logging/log.js";
 import { record } from "../records/record.js";
+
+/**
+ * Guard every measured case against transport/billing faults. A 402 (OpenRouter in-flight budget),
+ * a dropped socket, or an internal deadline abort is NOT an artifact outcome — scoring it would
+ * report a billing blip as a content/trace regression (exactly what turned the CI agent tiers 8/8
+ * and 4/4 red). Call this the instant a Result is in hand, BEFORE any assert/record: it emits a
+ * visible note and calls ctx.skip(), which throws to abort the test as SKIPPED (not failed) and so
+ * never reaches record(). Keep it before the try/finally — skip()'s throw must not be swallowed.
+ */
+function skipIfInfra(ctx: TaskContext, name: string, result: Result): void {
+  if (!isInfraError(result)) return;
+  console.warn(`  ⚠ SKIP (infra fault, not an artifact result): ${name}\n    ${result.text.slice(0, 200)}`);
+  ctx.skip();
+}
 
 // --- Case shapes ------------------------------------------------------------
 
@@ -81,10 +95,11 @@ type Task = (prompt: string, artifact: string, opts?: RunOptions) => Promise<Res
 
 function runQualityCases(artifact: string, cases: QualityCase[], task: Task): void {
   for (const c of cases) {
-    test(c.name, async () => {
+    test(c.name, async (ctx) => {
       const threshold = c.threshold ?? DEFAULT_THRESHOLD;
       const result = await task(c.prompt, artifact, { maxTurns: c.maxTurns });
       logTrace(c.name, result);
+      skipIfInfra(ctx, c.name, result); // billing/transport fault → skip, don't score it
 
       // measure → record → assert. Everything measurable runs in the try; record() fires in the
       // finally with whatever accumulated; the asserts happen strictly after. A failing config
@@ -117,7 +132,7 @@ export const runAgentCases = (agent: string, cases: AgentCase[]) => runQualityCa
 
 export function runWorkflowCases(cases: WorkflowCase[]): void {
   for (const c of cases) {
-    test(c.name, async () => {
+    test(c.name, async (ctx) => {
       if (c.kind === "dispatch") {
         // Stop the moment the subagent is launched — no need to wait out its nested session.
         const expect1 = c.expectSubagent;
@@ -126,6 +141,7 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
           stopWhen: (p) => p.subagents.includes(expect1),
         });
         logTrace(c.name, result);
+        skipIfInfra(ctx, c.name, result);
         try {
           expect(result.subagents, `subagents: ${result.subagents.join(", ")}`).toContain(c.expectSubagent);
         } finally {
@@ -145,6 +161,7 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
             : undefined,
         });
         logTrace(c.name, result);
+        skipIfInfra(ctx, c.name, result);
         try {
           expect(
             activated(result, c.skill),
@@ -171,6 +188,7 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
             files.every((f) => p.filesRead.some((r) => r.includes(f))),
         });
         logTrace(c.name, result);
+        skipIfInfra(ctx, c.name, result);
         try {
           for (const sub of c.expectSubagents ?? []) {
             expect(result.subagents, `subagents: ${result.subagents.join(", ")}`).toContain(sub);
@@ -204,6 +222,8 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
         });
         logTrace(`${c.name} [treatment]`, treatment);
         logTrace(`${c.name} [control]`, control);
+        skipIfInfra(ctx, `${c.name} [treatment]`, treatment);
+        skipIfInfra(ctx, `${c.name} [control]`, control);
         try {
           const treatmentRead = treatment.filesRead.some((f) => f.includes(c.expectFileRead));
           const controlRead = control.filesRead.some((f) => f.includes(c.expectFileRead));

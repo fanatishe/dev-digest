@@ -4,7 +4,7 @@
  */
 
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
-import { EVAL_MODEL, MAX_TURNS, SPAWN_TOOLS } from "../config.js";
+import { EVAL_MODEL, MAX_TURNS, RUN_DEADLINE_MS, SPAWN_TOOLS } from "../config.js";
 import { REPO_ROOT } from "../artifacts/paths.js";
 import { subscriptionEnv } from "./env.js";
 
@@ -65,6 +65,16 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     systemPrompt = (systemPrompt ?? "") + directive;
   }
 
+  // Internal deadline. Fires below vitest's testTimeout so a hung call (e.g. an OpenRouter 402 the
+  // proxy keeps retrying with Retry-After) is aborted here and returns a partial isError Result the
+  // caller can infra-skip — instead of the whole test being hard-killed by vitest with no verdict.
+  const abortController = new AbortController();
+  let deadlineHit = false;
+  const deadline = setTimeout(() => {
+    deadlineHit = true;
+    abortController.abort();
+  }, RUN_DEADLINE_MS);
+
   const options: Options = {
     model: opts.model ?? EVAL_MODEL,
     maxTurns: opts.maxTurns ?? MAX_TURNS,
@@ -78,6 +88,9 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     // Default: do NOT load on-disk config — isolates the injected artifact. workflowTask overrides.
     settingSources: opts.settingSources ?? [],
     env: subscriptionEnv(),
+    // Internal deadline: abort before vitest's testTimeout so a proxy/billing stall returns a
+    // classifiable isError Result instead of a hard test kill. The timer is cleared on normal exit.
+    abortController,
   };
 
   const textParts: string[] = [];
@@ -153,20 +166,29 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     }
   } catch (err) {
     isError = true;
-    // "Usable" is not just prose. Trace-based workflow evals assert on the tool/subagent/skill/
-    // read trace, so a run that collected any of those produced a real result even if it emitted
-    // no assistant text before erroring (e.g. a negative-activation case that spends its whole
-    // turn budget on read-only tool calls, never activates the skill, and hits max-turns). Only
-    // rethrow when NOTHING at all was captured — text and trace both empty.
-    const collectedTrace =
-      tools.length > 0 || reads.length > 0 || skills.length > 0 || subagents.length > 0;
-    if (!resultText && textParts.length === 0 && !collectedTrace) {
-      throw err; // nothing usable collected — surface the failure
+    // Deadline abort is an INFRA fault, not an artifact outcome: the call was hung (typically an
+    // upstream 402/stall the proxy kept retrying). Surface a recognizable "API Error:" marker so the
+    // runners classify it via isInfraError() and SKIP, and never rethrow it (a hang has no verdict).
+    if (deadlineHit) {
+      if (!resultText) resultText = `API Error: run deadline exceeded after ${RUN_DEADLINE_MS}ms (likely upstream stall / 402 retry)`;
+    } else {
+      // "Usable" is not just prose. Trace-based workflow evals assert on the tool/subagent/skill/
+      // read trace, so a run that collected any of those produced a real result even if it emitted
+      // no assistant text before erroring (e.g. a negative-activation case that spends its whole
+      // turn budget on read-only tool calls, never activates the skill, and hits max-turns). Only
+      // rethrow when NOTHING at all was captured — text and trace both empty.
+      const collectedTrace =
+        tools.length > 0 || reads.length > 0 || skills.length > 0 || subagents.length > 0;
+      if (!resultText && textParts.length === 0 && !collectedTrace) {
+        throw err; // nothing usable collected — surface the failure
+      }
     }
+  } finally {
+    clearTimeout(deadline);
   }
 
   // Early stop never reached the result message, so fall back to the wall-clock duration.
-  if (stoppedEarly && durationMs === 0) durationMs = Date.now() - startedAt;
+  if ((stoppedEarly || deadlineHit) && durationMs === 0) durationMs = Date.now() - startedAt;
 
   return {
     text: resultText || textParts.join("\n"),

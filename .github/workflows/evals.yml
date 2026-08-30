@@ -179,10 +179,17 @@ jobs:
   # ── Job 4: workflow (tool tier) — LiteLLM proxy, Claude Sonnet subject+judge, INFORMATIONAL ──
   # Non-blocking: the systemic routing/activation traces are the least deterministic tier
   # (they depend on the whole on-disk harness), so this stays advisory even on Claude.
+  #
+  # Runs AFTER `agents` (not alongside it). Both tool tiers dispatch nested subagents through the
+  # same OpenRouter account, and running them concurrently doubled the in-flight request count and
+  # tripped OpenRouter's `in_flight_budget_exhausted` (402) — which the proxy retried on Retry-After,
+  # stalling calls to vitest's 240s timeout. Serializing the two tool tiers halves peak in-flight
+  # load. `needs` waits for agents to finish; `always()` keeps this running even when `agents` was
+  # skipped (no agent changed) or failed, gated still on run_workflow.
   workflow:
     name: workflow
-    needs: detect
-    if: needs.detect.outputs.run_workflow == 'true'
+    needs: [detect, agents]
+    if: always() && needs.detect.outputs.run_workflow == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
     defaults:

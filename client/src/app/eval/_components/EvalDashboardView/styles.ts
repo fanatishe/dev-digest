@@ -56,7 +56,7 @@ export const s = {
   recentRow: {
     display: "grid",
     gridTemplateColumns:
-      "minmax(140px,1.4fr) 128px 44px minmax(84px,1fr) minmax(84px,1fr) minmax(84px,1fr) 56px",
+      "minmax(130px,1.2fr) minmax(110px,1fr) 120px 44px minmax(78px,1fr) minmax(78px,1fr) minmax(78px,1fr) 56px",
     alignItems: "center",
     gap: 14,
     padding: "9px 14px",
@@ -67,6 +67,12 @@ export const s = {
   } satisfies CSSProperties,
   recentName: {
     fontWeight: 600,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  } satisfies CSSProperties,
+  recentCase: {
+    color: "var(--text-secondary)",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",

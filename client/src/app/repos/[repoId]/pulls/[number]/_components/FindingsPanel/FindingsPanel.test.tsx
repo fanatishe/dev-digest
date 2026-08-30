@@ -157,6 +157,6 @@ describe("FindingsPanel — turn-into-eval affordance gating (AC-3)", () => {
     const btn = screen.getByRole("button", { name: /turn .* into an eval case/i });
     fireEvent.click(btn);
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("Must find")).toBeInTheDocument();
+    expect(within(dialog).getByText(/positive case/i)).toBeInTheDocument();
   });
 });

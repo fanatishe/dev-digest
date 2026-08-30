@@ -45,3 +45,9 @@ export function shortWhen(iso: string): string {
     minute: "2-digit",
   });
 }
+
+/** The "CASE" label for a batch in the recent-runs list: the single case's name for a
+    per-row (1-case) run, else "All (N)". Server sets `label` for 1-case batches. */
+export function batchCaseLabel(batch: { label?: string | null; cases_total: number }): string {
+  return batch.label ?? `All (${batch.cases_total})`;
+}

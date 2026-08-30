@@ -1,72 +1,60 @@
-/* diff.ts — a tiny unified-diff builder/splitter for the eval-case authoring UI.
+/* diff.ts — split a (possibly multi-file) unified diff into per-file chunks.
 
-   The modal lets an author describe an input by its Before/After file content
-   (rather than pasting a raw patch). `buildUnifiedDiff` turns that into a whole-file
-   replacement patch — a single hunk with every Before line as `-` and every After
-   line as `+`. It is intentionally NOT a minimal Myers diff: the case only needs a
-   valid patch the review engine can parse (server `parseUnifiedDiff`) and the client
-   `parsePatch` can render. `splitUnifiedDiff` is the inverse, used to prefill the
-   Before/After editors when EDITING a case that already has a stored `input_diff`. */
+   The eval-case input is authored as ONE git-style unified diff (a plain textarea, the
+   `input_diff` source of truth). The read-only Files tab is a projection of that diff:
+   this splits the blob into one entry per file so the tab can show a file list + the
+   selected file's raw patch. It is a lightweight parser, not a full diff model — it only
+   needs to group lines by file and recover each file's path. */
 
-export interface DiffParts {
-  file: string;
-  before: string;
-  after: string;
-  /** A newly-added file: no Before side, `--- /dev/null`. */
-  newFile: boolean;
+export interface DiffFile {
+  path: string;
+  /** The raw chunk text for this file (headers + hunks), as-is. */
+  patch: string;
 }
 
-/** Split text into lines, dropping a single trailing newline (so "a\n" → ["a"]). */
-function toLines(s: string): string[] {
-  if (s === "") return [];
-  return s.replace(/\n$/, "").split("\n");
-}
-
-/** Build a whole-file-replacement unified diff from Before/After content. */
-export function buildUnifiedDiff({ file, before, after, newFile }: DiffParts): string {
-  const f = file.trim() || "snippet.ts";
-  const beforeLines = newFile ? [] : toLines(before);
-  const afterLines = toLines(after);
-  const oldRange = newFile ? "0,0" : `1,${beforeLines.length}`;
-  const header = [
-    `diff --git a/${f} b/${f}`,
-    newFile ? "--- /dev/null" : `--- a/${f}`,
-    `+++ b/${f}`,
-    `@@ -${oldRange} +1,${afterLines.length} @@`,
-  ];
-  const body = [...beforeLines.map((l) => `-${l}`), ...afterLines.map((l) => `+${l}`)];
-  return [...header, ...body].join("\n");
-}
-
-/** Reconstruct { file, before, after, newFile } from a unified-diff patch. Header
-    lines (`diff --git`, `---`, `+++`, `@@`) are skipped so they never leak into the
-    Before/After content. Tolerant of a missing/blank patch (→ empty parts). */
-export function splitUnifiedDiff(patch: string | null | undefined): DiffParts {
-  const before: string[] = [];
-  const after: string[] = [];
-  let file = "snippet.ts";
-  let newFile = false;
-
-  for (const raw of (patch ?? "").split("\n")) {
-    if (raw.startsWith("diff --git")) {
-      const m = raw.match(/ b\/(\S+)/);
-      if (m) file = m[1]!;
-    } else if (raw.startsWith("--- ")) {
-      if (raw.includes("/dev/null")) newFile = true;
-    } else if (raw.startsWith("+++ ")) {
-      const m = raw.match(/\+\+\+ b\/(\S+)/);
-      if (m) file = m[1]!;
-    } else if (raw.startsWith("@@")) {
-      // hunk header — skip
-    } else if (raw.startsWith("+")) {
-      after.push(raw.slice(1));
-    } else if (raw.startsWith("-")) {
-      before.push(raw.slice(1));
-    } else if (raw !== "") {
-      const t = raw.startsWith(" ") ? raw.slice(1) : raw;
-      before.push(t);
-      after.push(t);
-    }
+/** Recover a file path from a chunk: prefer `+++ b/<path>`, then the `diff --git` header. */
+function pathFromChunk(chunk: string): string {
+  for (const line of chunk.split("\n")) {
+    let m = line.match(/^\+\+\+ b\/(.+)$/);
+    if (m) return m[1]!.trim();
+    m = line.match(/^diff --git a\/\S+ b\/(.+)$/);
+    if (m) return m[1]!.trim();
+    m = line.match(/^\+\+\+ (?!\/dev\/null)(.+)$/);
+    if (m) return m[1]!.trim();
   }
-  return { file, before: before.join("\n"), after: after.join("\n"), newFile };
+  return "";
+}
+
+/** Split a unified diff into per-file chunks. Splits on `diff --git` boundaries when the
+    diff carries git headers, else on each `--- ` file header; a diff with neither marker
+    is returned as a single chunk. Tolerant of empty/blank input (→ `[]`). */
+export function splitDiffByFile(diff: string | null | undefined): DiffFile[] {
+  const text = (diff ?? "").replace(/\r\n/g, "\n");
+  if (!text.trim()) return [];
+
+  const lines = text.split("\n");
+  const hasGit = lines.some((l) => l.startsWith("diff --git"));
+  const isBoundary = hasGit
+    ? (l: string) => l.startsWith("diff --git")
+    : (l: string) => l.startsWith("--- ");
+
+  if (!lines.some(isBoundary)) {
+    return [{ path: pathFromChunk(text) || "diff", patch: text.trim() }];
+  }
+
+  const chunks: string[][] = [];
+  let current: string[] | null = null;
+  for (const line of lines) {
+    if (isBoundary(line)) {
+      if (current) chunks.push(current);
+      current = [];
+    }
+    if (current) current.push(line); // any preamble before the first boundary is dropped
+  }
+  if (current) chunks.push(current);
+
+  return chunks.map((ls) => {
+    const patch = ls.join("\n").trim();
+    return { path: pathFromChunk(patch) || "diff", patch };
+  });
 }

@@ -23,7 +23,7 @@ import type { EvalBatch, EvalDashboardRow } from "@devdigest/shared";
 import { AppShell } from "@/components/app-shell";
 import { useEvalDashboard, useDashboardRunAll } from "@/lib/hooks/evals";
 import { useSecretsStatus } from "@/lib/hooks/core";
-import { pct, passSummary, versionLabel, shortWhen } from "../../helpers";
+import { pct, passSummary, versionLabel, shortWhen, batchCaseLabel } from "../../helpers";
 import { METRICS } from "../../constants";
 import { MetricBar } from "../MetricBar";
 import { COPY } from "./constants";
@@ -35,6 +35,7 @@ function RecentRunRow({ name, batch }: { name: string; batch: EvalBatch }) {
   return (
     <div style={s.recentRow}>
       <span style={s.recentName}>{name}</span>
+      <span style={s.recentCase} title={batchCaseLabel(batch)}>{batchCaseLabel(batch)}</span>
       <span style={s.recentWhen}>{shortWhen(batch.ran_at)}</span>
       <Badge mono bg="transparent" style={s.recentVersion}>
         {versionLabel(batch.agent_version)}

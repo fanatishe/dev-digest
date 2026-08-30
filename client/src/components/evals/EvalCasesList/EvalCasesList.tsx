@@ -11,16 +11,19 @@ import { EvalCaseRow } from "@/components/evals/EvalCaseRow";
 export function EvalCasesList({
   cases,
   onEdit,
+  runningId = null,
 }: {
   cases: readonly EvalCaseWithRuns[];
   onEdit?: (evalCase: EvalCaseWithRuns) => void;
+  /** The case currently being run by the panel's "Run all evals" sweep, if any. */
+  runningId?: string | null;
 }) {
   return (
     <ul
       style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}
     >
       {cases.map((c) => (
-        <EvalCaseRow key={c.id} evalCase={c} onEdit={onEdit} />
+        <EvalCaseRow key={c.id} evalCase={c} onEdit={onEdit} running={c.id === runningId} />
       ))}
     </ul>
   );

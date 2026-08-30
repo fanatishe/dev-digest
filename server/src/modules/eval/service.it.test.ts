@@ -153,6 +153,36 @@ d('EvalService (DB-backed)', () => {
     expect(runs.every((r) => r.agentVersion === 1)).toBe(true);
   });
 
+  it('batch-from-latest rolls the just-run cases into ONE batch, tags the runs, and labels it', async () => {
+    const agentId = await makeAgent('bfl-agent');
+    const c1 = await makeCase(agentId, 'first-case');
+    const c2 = await makeCase(agentId, 'second-case');
+    const svc = makeService(new MockLLMProvider('openai', { structured: REVIEW_FIXTURE }));
+
+    // Per-row-style: run each case once (ad-hoc runs, batch_id null).
+    await svc.runCaseTimes(workspaceId, c1, 1);
+    await svc.runCaseTimes(workspaceId, c2, 1);
+
+    // A single case → a 1-case batch labelled by the case name.
+    const solo = await svc.batchFromLatest(workspaceId, 'agent', agentId, [c1]);
+    expect(solo.cases_total).toBe(1);
+    expect(solo.traces_total).toBe(1);
+    expect(solo.label).toBe('first-case');
+
+    // Both cases → an "All (2)" batch; its two runs are re-tagged to it.
+    await svc.runCaseTimes(workspaceId, c1, 1);
+    await svc.runCaseTimes(workspaceId, c2, 1);
+    const all = await svc.batchFromLatest(workspaceId, 'agent', agentId, [c1, c2]);
+    expect(all.cases_total).toBe(2);
+    expect(all.label).toBe('All (2)');
+
+    const tagged = await pg.handle.db
+      .select()
+      .from(t.evalRuns)
+      .where(eq(t.evalRuns.batchId, all.id));
+    expect(tagged).toHaveLength(2);
+  });
+
   it('the repro window is filtered to the pinned version — a pre-edit run is excluded (AC-15)', async () => {
     const agentId = await makeAgent('repro-agent');
     const svc = makeService(new MockLLMProvider('openai', { structured: REVIEW_FIXTURE }));

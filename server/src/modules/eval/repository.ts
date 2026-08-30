@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { EvalOwnerKind } from '@devdigest/shared';
@@ -298,5 +298,51 @@ export class EvalRepository {
       .where(and(eq(t.evalBatches.workspaceId, workspaceId), eq(t.evalBatches.ownerKind, ownerKind)))
       .orderBy(desc(t.evalBatches.ranAt))
       .limit(limit);
+  }
+
+  /**
+   * The single most-recent run of EACH given case (one row per case), for
+   * batch-from-latest: the client has just run these cases, and we aggregate those
+   * runs into one batch without re-invoking the model. One query ordered newest-first,
+   * deduped to the first row per case in JS (caseIds is small — a panel's cases).
+   */
+  async latestRunsForCases(caseIds: readonly string[]): Promise<EvalRunRow[]> {
+    if (caseIds.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(t.evalRuns)
+      .where(inArray(t.evalRuns.caseId, [...caseIds]))
+      .orderBy(desc(t.evalRuns.ranAt));
+    const seen = new Set<string>();
+    const latest: EvalRunRow[] = [];
+    for (const r of rows) {
+      if (seen.has(r.caseId)) continue;
+      seen.add(r.caseId);
+      latest.push(r);
+    }
+    return latest;
+  }
+
+  /** Tag runs with a batch id (batch-from-latest groups the just-run rows into its batch). */
+  async attachRunsToBatch(runIds: readonly string[], batchId: string): Promise<void> {
+    if (runIds.length === 0) return;
+    await this.db
+      .update(t.evalRuns)
+      .set({ batchId })
+      .where(inArray(t.evalRuns.id, [...runIds]));
+  }
+
+  /**
+   * The distinct case names in a batch (via its runs). Used to LABEL a batch in the
+   * recent-runs list: a 1-case batch shows that case's name, an N-case batch shows
+   * "All (N)". Cheap — called only for the ≤10 batches in a recent list.
+   */
+  async caseNamesForBatch(batchId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectDistinct({ name: t.evalCases.name })
+      .from(t.evalRuns)
+      .innerJoin(t.evalCases, eq(t.evalRuns.caseId, t.evalCases.id))
+      .where(eq(t.evalRuns.batchId, batchId));
+    return rows.map((r) => r.name);
   }
 }

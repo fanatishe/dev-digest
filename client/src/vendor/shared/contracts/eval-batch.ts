@@ -38,8 +38,18 @@ export const EvalBatch = z.object({
   cases_total: z.number().int(),
   cost_usd: z.number().nullable(),
   duration_ms: z.number().int().nullable(),
+  /** Display label for the recent-runs list: the single case's name for a 1-case batch
+   *  (a per-row run), else null → the client renders "All (<cases_total>)". Derived at read
+   *  time, so it is optional on the wire. */
+  label: z.string().nullish(),
 });
 export type EvalBatch = z.infer<typeof EvalBatch>;
+
+/** POST body for batch-from-latest: aggregate the latest run of each listed case into one batch. */
+export const EvalBatchFromLatestBody = z.object({
+  case_ids: z.array(z.string()).min(1),
+});
+export type EvalBatchFromLatestBody = z.infer<typeof EvalBatchFromLatestBody>;
 
 /** Reproduction rate over the last N runs of the pinned version. Reliable iff ratio >= 0.8. */
 export const EvalReproducibility = z.object({

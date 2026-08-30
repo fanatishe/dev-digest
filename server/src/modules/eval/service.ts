@@ -22,10 +22,11 @@ import type {
 import { AgentVersionConfig } from '@devdigest/shared';
 import { scoreBatch, type BatchCase } from '@devdigest/reviewer-core';
 import { NotFoundError, ValidationError } from '../../platform/errors.js';
-import { EvalRepository, type EvalCaseRow } from './repository.js';
+import { EvalRepository, type EvalBatchRow, type EvalCaseRow, type EvalRunRow } from './repository.js';
 import { EvalRunExecutor, type EvalCaseExecution } from './run-executor.js';
 import {
   agentRowToDto,
+  batchLabel,
   parseExpectations,
   reproFromPasses,
   resolveRange,
@@ -255,6 +256,59 @@ export class EvalService {
     return { batch: toEvalBatchDto(batchRow), runs };
   }
 
+  /**
+   * Aggregate the LATEST run of each given case into ONE batch — a dashboard trend point —
+   * WITHOUT re-invoking the model. The client has just run these cases (a per-row Run, or the
+   * "Run all evals" cascade), so we read those runs and roll them up: this is how a per-row run
+   * (1 case) and a run-all (N cases) both land on the dashboard, labelled by case name / "All (N)".
+   *
+   * The rollup uses each run's STORED scalar metrics (mean of recall/precision/citation; pass =
+   * passed/total) — the pre-grounding `producedCount` needed for scoreBatch's micro-average is not
+   * persisted per run, so this macro-average is the faithful zero-LLM aggregate. The runs are then
+   * tagged with the new batch id so they belong to it.
+   */
+  async batchFromLatest(
+    workspaceId: string,
+    ownerKind: EvalOwnerKind,
+    ownerId: string,
+    caseIds: string[],
+  ): Promise<EvalBatch> {
+    // Only aggregate cases that (a) belong to this owner and (b) have at least one run.
+    const owned = new Set((await this.repo.listCases(workspaceId, ownerKind, ownerId)).map((c) => c.id));
+    const runs = (await this.repo.latestRunsForCases(caseIds.filter((id) => owned.has(id)))).filter(
+      (r): r is EvalRunRow => r != null,
+    );
+    if (runs.length === 0) throw new ValidationError('No runs to aggregate — run the case(s) first');
+
+    const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+    const num = (x: number | null | undefined) => x ?? 0;
+    const tracesPassed = runs.filter((r) => r.pass === true).length;
+    const costs = runs.map((r) => r.costUsd).filter((c): c is number => c != null);
+
+    const batchRow = await this.repo.insertBatch({
+      workspaceId,
+      ownerKind,
+      ownerId,
+      agentVersion: runs[0]!.agentVersion ?? null,
+      recall: mean(runs.map((r) => num(r.recall))),
+      precision: mean(runs.map((r) => num(r.precision))),
+      citationAccuracy: mean(runs.map((r) => num(r.citationAccuracy))),
+      passRate: runs.length ? tracesPassed / runs.length : 0,
+      tracesPassed,
+      tracesTotal: runs.length,
+      casesTotal: runs.length,
+      costUsd: costs.length ? costs.reduce((a, b) => a + b, 0) : null,
+      durationMs: runs.reduce((a, r) => a + num(r.durationMs), 0),
+    });
+    await this.repo.attachRunsToBatch(
+      runs.map((r) => r.id),
+      batchRow.id,
+    );
+
+    const names = runs.length === 1 ? await this.repo.caseNamesForBatch(batchRow.id) : [];
+    return toEvalBatchDto(batchRow, batchLabel(batchRow, names));
+  }
+
   /** Run-all for EVERY agent that has ≥1 case → one batch each (agents only). */
   async dashboardRunAll(workspaceId: string): Promise<EvalDashboardRunAllResult> {
     const agents = await this.container.agentsRepo.list(workspaceId);
@@ -354,7 +408,7 @@ export class EvalService {
     );
 
     const recent = await this.repo.recentBatches(workspaceId, 'agent', 10);
-    return { agents: rows, recent_batches: recent.map(toEvalBatchDto) };
+    return { agents: rows, recent_batches: await this.withLabels(recent) };
   }
 
   /** Date-filtered batches for an owner (AC-29). */
@@ -374,7 +428,21 @@ export class EvalService {
       range.from,
       range.to,
     );
-    return batches.map(toEvalBatchDto);
+    return this.withLabels(batches);
+  }
+
+  /**
+   * Map batch rows → DTOs, deriving each row's recent-runs LABEL (the single case's name
+   * for a 1-case batch, else "All (N)"). The case-name lookup runs only for 1-case batches
+   * and only over the small recent/trend lists, so it stays cheap.
+   */
+  private async withLabels(rows: EvalBatchRow[]): Promise<EvalBatch[]> {
+    return Promise.all(
+      rows.map(async (row) => {
+        const names = (row.casesTotal ?? 0) === 1 ? await this.repo.caseNamesForBatch(row.id) : [];
+        return toEvalBatchDto(row, batchLabel(row, names));
+      }),
+    );
   }
 
   // ---- Compare + Promote (AC-23, AC-24) ----------------------------------

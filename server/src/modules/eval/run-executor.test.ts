@@ -3,7 +3,7 @@ import type { Review } from '@devdigest/shared';
 import { parseUnifiedDiff } from '../../adapters/git/diff-parser.js';
 import { MockLLMProvider } from '../../adapters/mocks.js';
 import { assembleEvalReviewInput, type EvalRunConfig } from './helpers.js';
-import { EvalRunExecutor } from './run-executor.js';
+import { EvalRunExecutor, parseCaseDiff } from './run-executor.js';
 import { EVAL_SKILL_HOST_PROMPT } from './constants.js';
 import type { EvalCaseRow } from './repository.js';
 
@@ -123,5 +123,32 @@ describe('EvalRunExecutor.runCase', () => {
     expect(result.score.pass).toBe(true);
     expect(result.grounded).toHaveLength(1);
     expect(result.producedCount).toBe(1);
+  });
+});
+
+describe('parseCaseDiff — headerless-patch rescue (must_find regression)', () => {
+  // GitHub's PrFile.patch is headerless — starts at `@@`, no `+++ b/<path>` — so a case
+  // seeded from it parses to ZERO files, the agent reviews nothing, and every must_find
+  // fails. This is that exact bug's guard.
+  const HEADERLESS = '@@ -10,3 +10,4 @@\n   port: 3000,\n+  stripeKey: "sk_live_xxx",\n   redisUrl: x,';
+
+  it('a headerless input_diff alone parses to zero files (the bug)', () => {
+    expect(parseUnifiedDiff(HEADERLESS).files).toHaveLength(0);
+  });
+
+  it('rescues a headerless input_diff using input_files paths', () => {
+    const diff = parseCaseDiff(HEADERLESS, [{ path: 'src/config.ts', patch: HEADERLESS }]);
+    expect(diff.files.map((f) => f.path)).toEqual(['src/config.ts']);
+    expect(diff.files[0]!.hunks.flatMap((h) => h.newLineNumbers)).toContain(11);
+  });
+
+  it('leaves a well-formed diff untouched (ignores input_files)', () => {
+    const diff = parseCaseDiff(DIFF_RAW, [{ path: 'WRONG', patch: '@@' }]);
+    expect(diff.files.map((f) => f.path)).toEqual(['src/config.ts']);
+  });
+
+  it('degrades to empty (never throws) when there is nothing to rescue from', () => {
+    expect(parseCaseDiff(HEADERLESS, null).files).toHaveLength(0);
+    expect(parseCaseDiff('', undefined).files).toHaveLength(0);
   });
 });

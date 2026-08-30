@@ -25,7 +25,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Button, EmptyState, MetricCard, SectionLabel, Skeleton } from "@devdigest/ui";
 import type { EvalCaseWithRuns, EvalOwnerKind } from "@devdigest/shared";
-import { useEvalCases, useRunAll } from "@/lib/hooks/evals";
+import { useBatchFromLatest, useEvalCases, useRunCase } from "@/lib/hooks/evals";
 import { EvalCaseModal } from "@/components/evals/EvalCaseModal";
 import { EvalCasesList } from "@/components/evals/EvalCasesList";
 import { deriveMetrics, pct } from "./helpers";
@@ -50,12 +50,42 @@ export function EvalsPanel({
   const [editing, setEditing] = React.useState<EvalCaseWithRuns | null>(null);
 
   const cases = useEvalCases(owner);
-  // useRunAll targets the agents run-all endpoint; only wired for agent owners.
-  const runAll = useRunAll(owner.kind === "agent" ? owner.id : null);
 
   const rows = React.useMemo(() => cases.data ?? [], [cases.data]);
   const metrics = React.useMemo(() => deriveMetrics(rows), [rows]);
   const isAgent = owner.kind === "agent";
+
+  // "Run all evals" runs every case once, one after another — VISUALLY, as if each row's own
+  // Run button were clicked (the running row shows its spinner, each run invalidates the cases
+  // query so its pass updates before the next starts). Then it rolls those just-run cases into
+  // ONE dashboard batch ("All (N)") via batch-from-latest — so the run is both a live cascade
+  // AND a dashboard trend point. Sequential, not parallel, so the cascade is legible. A single
+  // case's failure never aborts the sweep.
+  const run = useRunCase();
+  const batchFromLatest = useBatchFromLatest(owner.kind === "agent" ? owner : null);
+  const [runningId, setRunningId] = React.useState<string | null>(null);
+  const [runAllError, setRunAllError] = React.useState(false);
+  const runningAll = runningId !== null;
+
+  async function runAllEvals() {
+    setRunAllError(false);
+    const ran: string[] = [];
+    for (const c of rows) {
+      setRunningId(c.id);
+      try {
+        await run.mutateAsync({ caseId: c.id, times: 1 });
+        ran.push(c.id);
+      } catch {
+        setRunAllError(true); // e.g. no provider key — surfaced inline, never thrown (AC-27)
+      }
+    }
+    // Roll the just-run cases into one dashboard trend point (only for agents — the dashboard
+    // lists no skills). Failure here is non-fatal: the per-row results already landed.
+    if (ran.length > 0 && owner.kind === "agent") {
+      await batchFromLatest.mutateAsync(ran).catch(() => setRunAllError(true));
+    }
+    setRunningId(null);
+  }
 
   const cards = [
     { key: "recall", label: t("evalsPanel.metrics.recall"), value: pct(metrics.recall) },
@@ -88,8 +118,9 @@ export function EvalsPanel({
                 kind="secondary"
                 size="sm"
                 icon="Play"
-                loading={runAll.isPending}
-                onClick={() => runAll.mutate(undefined)}
+                loading={runningAll}
+                disabled={runningAll || rows.length === 0}
+                onClick={runAllEvals}
               >
                 {t("evalsPanel.runAll")}
               </Button>
@@ -103,7 +134,7 @@ export function EvalsPanel({
         {t("editor.tabs.evals")}
       </SectionLabel>
 
-      {isAgent && runAll.isError && <div style={s.runError}>{t("evalsPanel.runError")}</div>}
+      {isAgent && runAllError && <div style={s.runError}>{t("evalsPanel.runError")}</div>}
 
       {cases.isLoading ? (
         <div style={s.loading}>
@@ -123,7 +154,7 @@ export function EvalsPanel({
           onCta={() => setCreating(true)}
         />
       ) : (
-        <EvalCasesList cases={rows} onEdit={setEditing} />
+        <EvalCasesList cases={rows} onEdit={setEditing} runningId={runningId} />
       )}
 
       {showDashboardLink && isAgent && (

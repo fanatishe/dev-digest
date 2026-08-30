@@ -175,6 +175,28 @@ export function useRunAll(agentId: string | null | undefined) {
   });
 }
 
+/**
+ * Roll the just-run cases into ONE dashboard batch (a trend point) without re-running the
+ * model. The per-row Run posts [caseId] (→ a 1-case batch labelled by the case); "Run all
+ * evals" posts every id (→ an "All (N)" batch). Invalidates every dashboard surface so the
+ * new point shows immediately. Owner-agnostic (agents + skills), keyed off the owner.
+ */
+export function useBatchFromLatest(owner: { kind: "agent" | "skill"; id: string } | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (caseIds: string[]) =>
+      api.post<EvalBatch>(`/${owner?.kind}s/${owner?.id}/eval/batch-from-latest`, {
+        case_ids: caseIds,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["eval-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["agent-eval-dashboard", owner?.id] });
+      qc.invalidateQueries({ queryKey: ["agent-eval-batches", owner?.id] });
+      qc.invalidateQueries({ queryKey: ["eval-cases", owner?.kind, owner?.id] });
+    },
+  });
+}
+
 /** Whole-dashboard run-all → one batch per agent that has cases (AC-22). Needs a
    provider key; callers gate the affordance on `useSecretsStatus` and surface the
    error non-throwingly when a live run fails (AC-27). */

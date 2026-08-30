@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { EvalCaseInput, EvalOwnerKind } from '@devdigest/shared';
+import { EvalBatchFromLatestBody, EvalCaseInput, EvalOwnerKind } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -38,7 +38,11 @@ const RunTimesBody = z
   .object({ times: z.number().int().positive().max(50).default(DEFAULT_RUN_TIMES) })
   .optional();
 
-const RunAllBody = z.object({ version: z.number().int().positive().optional() }).optional();
+// `.nullish()`, not `.optional()`: a body-less POST (the client sends no body when there is
+// no `version` to pin) arrives as `req.body = null`, which `.optional()` (undefined-only)
+// rejects with "Expected object, received null" → 422. `.nullish()` accepts null too, so a
+// bare "Run all evals" click validates; the handler already reads `req.body?.version`.
+const RunAllBody = z.object({ version: z.number().int().positive().optional() }).nullish();
 
 const RunsQuery = z.object({
   limit: z.coerce.number().int().positive().max(100).default(DEFAULT_RUNS_LIMIT),
@@ -144,6 +148,27 @@ export default async function evalRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(app.container, req);
     return service.dashboardRunAll(workspaceId);
   });
+
+  // ---- Batch-from-latest: roll the just-run cases into one dashboard trend point ----
+  // A per-row Run posts [caseId] → a 1-case batch (labelled by the case); "Run all evals"
+  // posts every id → an N-case batch ("All (N)"). Zero LLM — aggregates existing runs.
+  app.post(
+    '/agents/:id/eval/batch-from-latest',
+    { schema: { params: IdParams, body: EvalBatchFromLatestBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.batchFromLatest(workspaceId, 'agent', req.params.id, req.body.case_ids);
+    },
+  );
+
+  app.post(
+    '/skills/:id/eval/batch-from-latest',
+    { schema: { params: IdParams, body: EvalBatchFromLatestBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.batchFromLatest(workspaceId, 'skill', req.params.id, req.body.case_ids);
+    },
+  );
 
   // ---- Dashboards + batches ----------------------------------------------
 

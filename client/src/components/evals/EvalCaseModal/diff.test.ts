@@ -1,47 +1,56 @@
 import { describe, it, expect } from "vitest";
-import { buildUnifiedDiff, splitUnifiedDiff } from "./diff";
+import { splitDiffByFile } from "./diff";
 
-describe("buildUnifiedDiff", () => {
-  it("builds a modified-file whole-file replacement patch", () => {
-    const patch = buildUnifiedDiff({
-      file: "src/x.ts",
-      before: "const a = 1;\nconst b = 2;",
-      after: "const a = 1;",
-      newFile: false,
-    });
-    expect(patch).toContain("diff --git a/src/x.ts b/src/x.ts");
-    expect(patch).toContain("--- a/src/x.ts");
-    expect(patch).toContain("@@ -1,2 +1,1 @@");
-    expect(patch).toContain("-const b = 2;");
-    expect(patch).toContain("+const a = 1;");
+describe("splitDiffByFile", () => {
+  it("splits a multi-file git diff on `diff --git` boundaries", () => {
+    const diff = [
+      "diff --git a/src/config.ts b/src/config.ts",
+      "--- a/src/config.ts",
+      "+++ b/src/config.ts",
+      "@@ -1,1 +1,2 @@",
+      " export const config = {",
+      "+  stripeKey: 'x',",
+      "diff --git a/src/server.ts b/src/server.ts",
+      "--- a/src/server.ts",
+      "+++ b/src/server.ts",
+      "@@ -1,1 +1,1 @@",
+      "-const port = 3000;",
+      "+const port = 4000;",
+    ].join("\n");
+
+    const files = splitDiffByFile(diff);
+    expect(files.map((f) => f.path)).toEqual(["src/config.ts", "src/server.ts"]);
+    expect(files[0]!.patch).toContain("stripeKey");
+    expect(files[0]!.patch).not.toContain("server.ts");
+    expect(files[1]!.patch).toContain("const port = 4000;");
   });
 
-  it("builds a new-file patch against /dev/null", () => {
-    const patch = buildUnifiedDiff({ file: "t/new.ts", before: "", after: "x\ny", newFile: true });
-    expect(patch).toContain("--- /dev/null");
-    expect(patch).toContain("@@ -0,0 +1,2 @@");
-    // No deletion (body) lines for a new file.
-    const delLines = patch.split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---"));
-    expect(delLines).toEqual([]);
-    expect(patch).toContain("+x");
-    expect(patch).toContain("+y");
-  });
-});
-
-describe("splitUnifiedDiff", () => {
-  it("round-trips a modified file (header lines never leak into content)", () => {
-    const parts = { file: "src/x.ts", before: "a\nb", after: "a", newFile: false };
-    const back = splitUnifiedDiff(buildUnifiedDiff(parts));
-    expect(back).toEqual(parts);
-    expect(back.before).not.toContain("diff --git");
+  it("splits a headerless diff on `--- ` file headers", () => {
+    const diff = [
+      "--- a/a.ts",
+      "+++ b/a.ts",
+      "@@ -1 +1 @@",
+      "-a",
+      "+A",
+      "--- a/b.ts",
+      "+++ b/b.ts",
+      "@@ -1 +1 @@",
+      "-b",
+      "+B",
+    ].join("\n");
+    expect(splitDiffByFile(diff).map((f) => f.path)).toEqual(["a.ts", "b.ts"]);
   });
 
-  it("round-trips a new file", () => {
-    const parts = { file: "t/new.ts", before: "", after: "x\ny", newFile: true };
-    expect(splitUnifiedDiff(buildUnifiedDiff(parts))).toEqual(parts);
+  it("returns a single chunk when there is no file boundary marker", () => {
+    const diff = "@@ -1 +1 @@\n-a\n+b";
+    const files = splitDiffByFile(diff);
+    expect(files).toHaveLength(1);
+    expect(files[0]!.patch).toContain("+b");
   });
 
-  it("tolerates an empty/blank patch", () => {
-    expect(splitUnifiedDiff("")).toEqual({ file: "snippet.ts", before: "", after: "", newFile: false });
+  it("tolerates empty/blank input", () => {
+    expect(splitDiffByFile("")).toEqual([]);
+    expect(splitDiffByFile(null)).toEqual([]);
+    expect(splitDiffByFile("   \n  ")).toEqual([]);
   });
 });

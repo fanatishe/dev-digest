@@ -1,17 +1,22 @@
-/* EvalCaseModal — turn a finding (or a blank slate, for the SkillEditor) into a
+/* EvalCaseModal — turn a finding (or a blank slate, for the Skill/Agent editors) into a
    saved eval case. Lives in the shared components/evals ring so both the pulls
-   FindingsPanel (downward import) and WP-F's EvalsPanel can open it.
+   FindingsPanel (downward import) and the EvalsPanel can open it.
 
-   - Seeds the Diff/Files/PR-meta tabs from usePullDetail(prId) and pre-fills the
-     expected-output JSON from the finding (accepted -> must_find, dismissed ->
-     must_not_flag) (AC-1).
-   - Save disabled while the JSON is not a valid EvalExpectedOutput (AC-4); Save ->
-     POST /eval/cases with owner_id = the finding's review agent_id (AC-2).
-   - "Run on save" runs the case once and shows a ReproRateStrip; with no key the
-     run surfaces a non-throwing error state, never a crash (AC-5, AC-27).
+   One surface, three sources:
+   - finding-derived: the Diff/Files/PR-meta tabs are seeded READ-ONLY from usePullDetail
+     (AC-1), and the POSITIVE/NEGATIVE case flag is DERIVED from the finding's accept
+     (must_find) / dismiss (must_not_flag) decision.
+   - blank create / edit: the Diff tab is a single editable textarea holding a git-style
+     multi-file unified diff (the `input_diff` source of truth); the Files tab is a
+     read-only per-file projection of it; PR meta is editable. The case flag is a toggle,
+     and flipping it re-stamps the expected-output `kind`(s) so the two never disagree.
+
+   Save is disabled while the JSON is not a valid EvalExpectedOutput (AC-4); Save ->
+   POST/PATCH /eval/cases. "Run on save" runs once and shows a ReproRateStrip; with no key
+   the run surfaces a non-throwing error state, never a crash (AC-5, AC-27).
 
    All data flows through WP-D hooks — this component never calls fetch/api, and all
-   PR/finding content is rendered as text (never dangerouslySetInnerHTML). */
+   PR/finding/author content is rendered as text (never dangerouslySetInnerHTML). */
 "use client";
 
 import React from "react";
@@ -22,7 +27,6 @@ import type {
   EvalCaseWithRuns,
   EvalOwnerKind,
   FindingRecord,
-  PrFile,
 } from "@devdigest/shared";
 import { usePullDetail } from "@/lib/hooks/core";
 import {
@@ -31,19 +35,21 @@ import {
   useRunCase,
   useUpdateEvalCase,
 } from "@/lib/hooks/evals";
-import { ExpectationBadge } from "@/components/evals/ExpectationBadge";
 import { ReproRateStrip } from "@/components/evals/ReproRate";
 import { JsonEditorField } from "./_components/JsonEditorField";
-import { InputTabs, type InputTabKey } from "./_components/InputTabs";
-import { InputAuthor, type AuthorState } from "./_components/InputAuthor";
-import { buildUnifiedDiff, splitUnifiedDiff } from "./diff";
+import { InputTabs, type InputFile, type InputTabKey } from "./_components/InputTabs";
+import { CaseTypeBanner } from "./_components/CaseTypeBanner";
+import { splitDiffByFile } from "./diff";
 import {
+  type ExpectationKind,
   deriveKind,
   initialExpectedOutput,
+  kindOfExpected,
   lineRef,
   parseExpected,
   seedDiff,
   seedName,
+  setAllKinds,
   stringifyExpected,
   withSkeleton,
 } from "./helpers";
@@ -52,7 +58,7 @@ import { s } from "./styles";
 export interface EvalCaseModalProps {
   /** Owner the case attributes to (agent for a finding-derived case, AC-2). */
   owner: { kind: EvalOwnerKind; id: string };
-  /** The finding to seed from; omit for a blank create (WP-F skill tab). */
+  /** The finding to seed from; omit for a blank create (Skill/Agent Evals tab). */
   finding?: FindingRecord | null;
   /** The PR whose detail seeds the Diff/Files/PR-meta tabs (AC-1). */
   prId?: string | null;
@@ -64,8 +70,8 @@ export interface EvalCaseModalProps {
 export function EvalCaseModal({ owner, finding, prId, existingCase, onClose }: EvalCaseModalProps) {
   const t = useTranslations("eval");
   const isEdit = !!existingCase;
-  // A finding-derived case shows the seeded PR context read-only (AC-1); a blank
-  // create OR an edit uses the editable Before/After authoring surface (InputAuthor).
+  // A finding-derived case shows the seeded PR context read-only (AC-1); a blank create OR
+  // an edit uses the editable Diff/Files/PR-meta surface and a toggleable case-type flag.
   const authoring = !finding;
 
   const [name, setName] = React.useState(() => existingCase?.name ?? seedName(finding));
@@ -74,12 +80,17 @@ export function EvalCaseModal({ owner, finding, prId, existingCase, onClose }: E
       ? JSON.stringify(existingCase.expected_output, null, 2)
       : stringifyExpected(initialExpectedOutput(finding)),
   );
+  const [kind, setKind] = React.useState<ExpectationKind>(() =>
+    finding ? deriveKind(finding) : kindOfExpected(existingCase?.expected_output),
+  );
   const [activeTab, setActiveTab] = React.useState<InputTabKey>("diff");
   const [selectedFile, setSelectedFile] = React.useState<string | null>(finding?.file ?? null);
   const [runOnSave, setRunOnSave] = React.useState(false);
   const [createdCaseId, setCreatedCaseId] = React.useState<string | null>(null);
-  const [author, setAuthor] = React.useState<AuthorState>(() => initialAuthorState(existingCase));
-  const updateAuthor = (patch: Partial<AuthorState>) => setAuthor((a) => ({ ...a, ...patch }));
+
+  // Authoring input state: the diff textarea (source of truth) + editable PR meta.
+  const [authorDiff, setAuthorDiff] = React.useState(() => existingCase?.input_diff ?? "");
+  const [authorMeta, setAuthorMeta] = React.useState(() => readMeta(existingCase));
 
   const detail = usePullDetail(prId ?? null).data;
   const create = useCreateEvalCase();
@@ -92,20 +103,25 @@ export function EvalCaseModal({ owner, finding, prId, existingCase, onClose }: E
   const busy = create.isPending || update.isPending || run.isPending;
   const canSave = valid && name.trim().length > 0 && !busy;
 
-  const kind = finding ? deriveKind(finding) : "must_find";
-  // The input diff/files/meta come from the authoring surface, or (finding-derived)
-  // the seeded PR detail.
-  const diffText = authoring
-    ? buildUnifiedDiff({ file: author.file, before: author.before, after: author.after, newFile: author.mode === "new" })
-    : seedDiff(detail, finding?.file);
-  const sourceFiles: PrFile[] = detail?.files ?? [];
+  // The diff/files/meta come from the authoring surface, or (finding-derived) the seeded PR.
+  const diffText = authoring ? authorDiff : seedDiff(detail, finding?.file);
+  const files: InputFile[] = authoring
+    ? splitDiffByFile(diffText)
+    : (detail?.files ?? []).map((f) => ({ path: f.path, patch: f.patch ?? null }));
   const meta = authoring
-    ? { title: author.title, body: author.body, linkedIssue: null }
+    ? { title: authorMeta.title, body: authorMeta.body, linkedIssue: null }
     : {
         title: detail?.title ?? "",
         body: detail?.body ?? "",
         linkedIssue: detail?.linked_issue ?? null,
       };
+
+  // Flip the case-type flag (blank/edit only) and re-stamp the expected-output kind(s) so
+  // the banner and the JSON stay in agreement.
+  function toggleKind(next: ExpectationKind) {
+    setKind(next);
+    setExpectedText((text) => setAllKinds(text, next));
+  }
 
   // The last run's actual output (a { with, without } object for skill cases), from a
   // just-triggered run or the case's stored last run — shown read-only in the modal.
@@ -125,7 +141,7 @@ export function EvalCaseModal({ owner, finding, prId, existingCase, onClose }: E
       input_diff: diffText,
       input_files: authoring ? null : (detail?.files ?? null),
       input_meta: authoring
-        ? { title: author.title, body: author.body || null, linked_issue: null }
+        ? { title: authorMeta.title, body: authorMeta.body || null, linked_issue: null }
         : detail
           ? { title: detail.title, body: detail.body ?? null, linked_issue: detail.linked_issue ?? null }
           : null,
@@ -162,6 +178,16 @@ export function EvalCaseModal({ owner, finding, prId, existingCase, onClose }: E
       : t("caseModal.subtitleAccepted")
     : t("caseModal.subtitleBlank");
 
+  // The banner caption: a finding names the finding + line; a blank/edit case describes
+  // the assertion generically (no finding to reference).
+  const caption = finding
+    ? kind === "must_find"
+      ? t("caseModal.mustFindDesc", { title: finding.title, ref: lineRef(finding) })
+      : t("caseModal.mustNotFlagDesc", { title: finding.title, ref: lineRef(finding) })
+    : kind === "must_find"
+      ? t("caseModal.mustFindBlank")
+      : t("caseModal.mustNotFlagBlank");
+
   return (
     <Modal
       width={860}
@@ -190,16 +216,7 @@ export function EvalCaseModal({ owner, finding, prId, existingCase, onClose }: E
     >
       <div style={s.body}>
         <div style={s.col}>
-          {finding && (
-            <div style={s.expectationCard(kind === "must_find")}>
-              <ExpectationBadge kind={kind} />
-              <span style={s.expectationDesc}>
-                {kind === "must_find"
-                  ? t("caseModal.mustFindDesc", { title: finding.title, ref: lineRef(finding) })
-                  : t("caseModal.mustNotFlagDesc", { title: finding.title, ref: lineRef(finding) })}
-              </span>
-            </div>
-          )}
+          <CaseTypeBanner kind={kind} editable={authoring} onToggle={toggleKind} caption={caption} />
 
           <label>
             <div style={s.fieldLabel}>
@@ -211,19 +228,18 @@ export function EvalCaseModal({ owner, finding, prId, existingCase, onClose }: E
 
           <div>
             <div style={s.fieldLabel}>{t("caseModal.inputLabel")}</div>
-            {authoring ? (
-              <InputAuthor value={author} onChange={updateAuthor} />
-            ) : (
-              <InputTabs
-                active={activeTab}
-                onTab={setActiveTab}
-                diffText={diffText}
-                files={sourceFiles}
-                selectedFile={selectedFile}
-                onSelectFile={setSelectedFile}
-                meta={meta}
-              />
-            )}
+            <InputTabs
+              active={activeTab}
+              onTab={setActiveTab}
+              editable={authoring}
+              diffText={diffText}
+              onDiffChange={setAuthorDiff}
+              files={files}
+              selectedFile={selectedFile}
+              onSelectFile={setSelectedFile}
+              meta={meta}
+              onMetaChange={(patch) => setAuthorMeta((m) => ({ ...m, ...patch }))}
+            />
           </div>
         </div>
 
@@ -232,7 +248,7 @@ export function EvalCaseModal({ owner, finding, prId, existingCase, onClose }: E
             value={expectedText}
             onChange={setExpectedText}
             valid={valid}
-            onInsertSkeleton={() => setExpectedText((text) => withSkeleton(text))}
+            onInsertSkeleton={() => setExpectedText((text) => withSkeleton(text, kind))}
           />
 
           {actualOutput != null && (
@@ -257,20 +273,8 @@ export function EvalCaseModal({ owner, finding, prId, existingCase, onClose }: E
   );
 }
 
-/** Seed the Before/After authoring state — reconstructed from a case being edited
-    (its stored diff/meta), or a blank slate for a new case. */
-function initialAuthorState(existing?: EvalCaseWithRuns | null): AuthorState {
-  if (existing) {
-    const parts = splitUnifiedDiff(existing.input_diff ?? "");
-    const m = existing.input_meta as { title?: string; body?: string | null } | null | undefined;
-    return {
-      file: parts.file,
-      mode: parts.newFile ? "new" : "modified",
-      before: parts.before,
-      after: parts.after,
-      title: m?.title ?? "",
-      body: m?.body ?? "",
-    };
-  }
-  return { file: "snippet.ts", mode: "modified", before: "", after: "", title: "", body: "" };
+/** Seed the editable PR-meta from a case being edited (its stored input_meta), else blank. */
+function readMeta(existing?: EvalCaseWithRuns | null): { title: string; body: string } {
+  const m = existing?.input_meta as { title?: string; body?: string | null } | null | undefined;
+  return { title: m?.title ?? "", body: m?.body ?? "" };
 }

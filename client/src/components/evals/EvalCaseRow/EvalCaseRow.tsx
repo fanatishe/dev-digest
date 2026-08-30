@@ -15,7 +15,7 @@ import { useTranslations } from "next-intl";
 import { Badge, Button } from "@devdigest/ui";
 import type { EvalCaseWithRuns } from "@devdigest/shared";
 import { useConfirm } from "@/lib/confirm";
-import { useDeleteEvalCase, useRunCase } from "@/lib/hooks/evals";
+import { useBatchFromLatest, useDeleteEvalCase, useRunCase } from "@/lib/hooks/evals";
 import { ExpectationBadge } from "@/components/evals/ExpectationBadge";
 import { ReproRateBadge } from "@/components/evals/ReproRate";
 import { distinctKinds, metaLine, parseExpectations, primaryRef, readSkillPair } from "./helpers";
@@ -27,14 +27,30 @@ const pctText = (n: number): string => `${Math.round(n * 100)}%`;
 export function EvalCaseRow({
   evalCase,
   onEdit,
+  running = false,
 }: {
   evalCase: EvalCaseWithRuns;
   onEdit?: (evalCase: EvalCaseWithRuns) => void;
+  /** Driven by the panel's "Run all evals" sweep — shows this row's Run spinner while
+      its turn in the sweep is in flight, so run-all is visually "clicking every row". */
+  running?: boolean;
 }) {
   const t = useTranslations("eval");
   const confirm = useConfirm();
   const run = useRunCase();
   const del = useDeleteEvalCase();
+  const batchFromLatest = useBatchFromLatest({ kind: evalCase.owner_kind, id: evalCase.owner_id });
+
+  // A per-row Run runs the case ONCE, then records a 1-case dashboard batch (labelled by the
+  // case name, e.g. "helper-case 1/1"). Failure is swallowed — the run itself already landed.
+  async function onRun() {
+    try {
+      await run.mutateAsync({ caseId: evalCase.id, times: 1 });
+      await batchFromLatest.mutateAsync([evalCase.id]);
+    } catch {
+      /* non-throwing: run.isError drives any surfaced state (AC-27) */
+    }
+  }
 
   const expectations = parseExpectations(evalCase.expected_output);
   const kinds = distinctKinds(expectations);
@@ -90,9 +106,10 @@ export function EvalCaseRow({
           kind="ghost"
           size="sm"
           icon="Play"
-          loading={run.isPending}
+          loading={run.isPending || batchFromLatest.isPending || running}
+          disabled={running}
           aria-label={t("evalsTab.run")}
-          onClick={() => run.mutate({ caseId: evalCase.id, times: 5 })}
+          onClick={onRun}
         />
         {onEdit && (
           <Button

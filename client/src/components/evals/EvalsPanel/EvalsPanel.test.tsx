@@ -15,7 +15,7 @@
    installed in this repo. */
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { EvalCaseWithRuns, EvalRunRecord } from "@devdigest/shared";
 import agents from "../../../../messages/en/agents.json";
@@ -37,12 +37,15 @@ const casesState = {
   isLoading: false,
   isError: false,
 };
+const runMutateAsync = vi.fn().mockResolvedValue([]);
+const batchMutateAsync = vi.fn().mockResolvedValue({});
 vi.mock("@/lib/hooks/evals", () => ({
   useEvalCases: () => ({ ...casesState, refetch: vi.fn() }),
-  useRunAll: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
-  useRunCase: () => ({ mutate: vi.fn(), isPending: false }),
+  useRunCase: () => ({ mutate: vi.fn(), mutateAsync: runMutateAsync, isPending: false }),
+  useBatchFromLatest: () => ({ mutate: vi.fn(), mutateAsync: batchMutateAsync, isPending: false }),
   useDeleteEvalCase: () => ({ mutate: vi.fn(), isPending: false }),
   useCreateEvalCase: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false }),
+  useUpdateEvalCase: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false }),
   useCaseRuns: () => ({ data: [] }),
 }));
 
@@ -125,6 +128,22 @@ describe("EvalsPanel", () => {
     expect(screen.queryByRole("link", { name: /view full dashboard/i })).not.toBeInTheDocument();
     // Run-all is an agents-only affordance — absent for a skill owner.
     expect(screen.queryByRole("button", { name: /run all evals/i })).not.toBeInTheDocument();
+  });
+
+  it("'Run all evals' runs each case ONCE (visual cascade), then rolls them into one dashboard batch", async () => {
+    runMutateAsync.mockClear();
+    batchMutateAsync.mockClear();
+    casesState.data = [evalCase("c1", true), evalCase("c2", false)];
+    renderPanel(<EvalsPanel owner={{ kind: "agent", id: "ag1" }} allowFromFinding showDashboardLink />);
+
+    fireEvent.click(screen.getByRole("button", { name: /run all evals/i }));
+
+    // Each case runs once (like clicking each row's Run) …
+    await waitFor(() => expect(runMutateAsync).toHaveBeenCalledTimes(2));
+    expect(runMutateAsync).toHaveBeenCalledWith({ caseId: "c1", times: 1 });
+    expect(runMutateAsync).toHaveBeenCalledWith({ caseId: "c2", times: 1 });
+    // … then all of them are aggregated into ONE dashboard batch (the "All (N)" trend point).
+    await waitFor(() => expect(batchMutateAsync).toHaveBeenCalledWith(["c1", "c2"]));
   });
 
   it("renders an empty state (no throw) when the owner has zero cases (AC-27)", () => {

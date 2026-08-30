@@ -70,10 +70,13 @@ d('Eval live experiment (OPENROUTER_API_KEY-gated)', () => {
   });
 
   async function runAll(): Promise<EvalRunAllResult> {
+    // NO payload on purpose: the web client sends a body-less POST for a bare "Run all
+    // evals" click (a version is only sent when pinning). A body-less POST arrives as
+    // req.body=null, so this guards the RunAllBody `.nullish()` fix — with `.optional()`
+    // it 422'd "Expected object, received null".
     const res = await app.inject({
       method: 'POST',
       url: `/agents/${agentId}/eval/run-all`,
-      payload: {},
     });
     expect(res.statusCode).toBe(200);
     return res.json() as EvalRunAllResult;

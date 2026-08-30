@@ -116,17 +116,10 @@
     "tabs": {
       "diff": "Diff",
       "files": "Files",
-      "prMeta": "PR meta",
-      "code": "Code",
-      "modifiedFile": "Modified file",
-      "newFile": "New file"
+      "prMeta": "PR meta"
     },
     "diffEmpty": "No diff to show for this file.",
     "filesEmpty": "This PR changes no files.",
-    "filePathLabel": "File path",
-    "before": "Before",
-    "after": "After",
-    "previewDiff": "Preview generated diff",
     "actualOutput": "Actual output",
     "titleLabel": "Title",
     "bodyLabel": "Body",
@@ -143,6 +136,12 @@
     "save": "Save",
     "running": "Running…",
     "runError": "Could not run the case. Check your provider key and try again.",
-    "saveError": "Could not save the case."
+    "saveError": "Could not save the case.",
+    "mustFindBlank": "MUST find the expected finding in this diff",
+    "mustNotFlagBlank": "MUST NOT flag anything in this diff",
+    "diffPlaceholder": "Paste a unified diff (git style) covering one or more files…",
+    "filesFromDiffEmpty": "No files yet — add a diff in the Diff tab.",
+    "toggleKindAria": "Toggle positive or negative case",
+    "toggleKindHint": "Click to switch positive / negative"
   }
 }

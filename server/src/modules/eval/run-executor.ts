@@ -1,4 +1,4 @@
-import type { Finding, EvalExpectedFinding, LLMProvider } from '@devdigest/shared';
+import type { Finding, EvalExpectedFinding, LLMProvider, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest, scoreCase, type CaseScore } from '@devdigest/reviewer-core';
 import { parseUnifiedDiff } from '../../adapters/git/diff-parser.js';
 import type { EvalCaseRow } from './repository.js';
@@ -30,6 +30,33 @@ export interface EvalCaseExecution {
   expectations: EvalExpectedFinding[];
 }
 
+/**
+ * Parse the case's stored diff into files+hunks. GitHub's `PrFile.patch` is HEADERLESS
+ * (starts at `@@`, no `+++ b/<path>`), and `parseUnifiedDiff` attributes hunks to a file
+ * only via that header — so a case seeded from a raw patch parses to ZERO files, the agent
+ * reviews an empty diff, and every `must_find` case fails (every `must_not_flag` trivially
+ * passes). New cases are fixed at authoring (the client seeds a header-complete diff); this
+ * rescues cases ALREADY saved with a headerless `input_diff` by re-attaching git headers from
+ * the stored `input_files` paths. Guarded: only runs when the primary parse found no files, so
+ * a well-formed diff is never touched.
+ */
+export function parseCaseDiff(inputDiff: string, inputFiles: unknown): UnifiedDiff {
+  const parsed = parseUnifiedDiff(inputDiff);
+  if (parsed.files.length > 0) return parsed;
+
+  const files = Array.isArray(inputFiles) ? inputFiles : [];
+  const rebuilt = files
+    .map((f) => (f && typeof f === 'object' ? (f as { path?: unknown; patch?: unknown }) : {}))
+    .filter(
+      (f): f is { path: string; patch: string } =>
+        typeof f.path === 'string' && typeof f.patch === 'string' && f.patch.trim().length > 0,
+    )
+    .map((f) => `diff --git a/${f.path} b/${f.path}\n--- a/${f.path}\n+++ b/${f.path}\n${f.patch}`)
+    .join('\n');
+
+  return rebuilt ? parseUnifiedDiff(rebuilt) : parsed;
+}
+
 export class EvalRunExecutor {
   /**
    * Execute one eval case: parse its fixed diff, assemble a hermetic ReviewInput,
@@ -40,7 +67,7 @@ export class EvalRunExecutor {
     caseRow: EvalCaseRow,
     llm: LLMProvider,
   ): Promise<EvalCaseExecution> {
-    const diff = parseUnifiedDiff(caseRow.inputDiff ?? '');
+    const diff = parseCaseDiff(caseRow.inputDiff ?? '', caseRow.inputFiles);
     const expectations = parseExpectations(caseRow.expectedOutput);
 
     const input = assembleEvalReviewInput(config, diff, llm);

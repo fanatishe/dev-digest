@@ -69,7 +69,7 @@ export function toEvalRunRecordDto(row: EvalRunRow, caseName?: string | null): E
  * but the contract types them as non-null numbers — coalesce a missing metric to
  * a neutral `0`/`1` so the trend never renders `NaN`.
  */
-export function toEvalBatchDto(row: EvalBatchRow): EvalBatch {
+export function toEvalBatchDto(row: EvalBatchRow, label?: string | null): EvalBatch {
   return {
     id: row.id,
     workspace_id: row.workspaceId,
@@ -86,7 +86,15 @@ export function toEvalBatchDto(row: EvalBatchRow): EvalBatch {
     cases_total: row.casesTotal ?? 0,
     cost_usd: row.costUsd ?? null,
     duration_ms: row.durationMs ?? null,
+    label: label ?? null,
   };
+}
+
+/** The recent-runs label for a batch: a 1-case batch shows that case's name; anything
+ *  else shows "All (<cases_total>)". `caseNames` are the distinct case names in the batch. */
+export function batchLabel(row: EvalBatchRow, caseNames: readonly string[]): string {
+  if ((row.casesTotal ?? 0) === 1 && caseNames.length === 1) return caseNames[0]!;
+  return `All (${row.casesTotal ?? caseNames.length})`;
 }
 
 /**

@@ -23,6 +23,33 @@ export const s = {
     color: "var(--text-secondary)",
     lineHeight: 1.5,
   } satisfies CSSProperties,
+  // The editable variant of the case-type flag: a full-width toggle (blank create + edit).
+  caseTypeToggle: (positive: boolean): CSSProperties => ({
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    width: "100%",
+    textAlign: "left",
+    padding: "12px 14px",
+    borderRadius: 10,
+    border: "1px solid " + (positive ? "var(--accent)" : "var(--warn)"),
+    background: "var(--bg-surface)",
+    cursor: "pointer",
+  }),
+  caseTypeHeading: (positive: boolean): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    color: positive ? "var(--accent)" : "var(--warn)",
+  }),
+  caseTypeHint: {
+    fontSize: 11.5,
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
   fieldLabel: {
     fontSize: 12,
     fontWeight: 700,

@@ -86,7 +86,7 @@ describe("EvalCaseModal — seeding (AC-1)", () => {
     expect(text).toContain('"kind": "must_find"');
     expect(text).toContain('"file": "src/config.ts"');
     expect(text).toContain('"start_line": 12');
-    expect(screen.getByText("Must find")).toBeInTheDocument();
+    expect(screen.getByText(/positive case/i)).toBeInTheDocument();
   });
 
   it("seeds a must_not_flag expectation from a dismissed finding", () => {
@@ -94,7 +94,7 @@ describe("EvalCaseModal — seeding (AC-1)", () => {
       <EvalCaseModal owner={{ kind: "agent", id: "a1" }} finding={finding({ id: "f1", dismissed_at: "2026-07-19T00:00:00Z" })} prId="pr1" onClose={() => {}} />,
     );
     expect(jsonEditor().value).toContain('"kind": "must_not_flag"');
-    expect(screen.getByText("Must not flag")).toBeInTheDocument();
+    expect(screen.getByText(/negative case/i)).toBeInTheDocument();
   });
 });
 
@@ -143,6 +143,31 @@ describe("EvalCaseModal — run on save (AC-5)", () => {
     expect(await screen.findByText("Last run passed")).toBeInTheDocument();
     expect(h.createMutate).toHaveBeenCalledTimes(1);
     expect(h.runMutate).toHaveBeenCalledWith({ caseId: "case1", times: 1 });
+  });
+});
+
+describe("EvalCaseModal — blank authoring (no finding)", () => {
+  it("shows a toggleable case-type flag that re-stamps the expected-output kind", () => {
+    renderWithIntl(<EvalCaseModal owner={{ kind: "skill", id: "s1" }} onClose={() => {}} />);
+    // A blank case defaults to POSITIVE; toggling flips the flag AND the JSON kind.
+    expect(screen.getByText(/positive case/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /toggle positive or negative/i }));
+    expect(screen.getByText(/negative case/i)).toBeInTheDocument();
+  });
+
+  it("projects an authored multi-file diff into the read-only Files tab", () => {
+    renderWithIntl(<EvalCaseModal owner={{ kind: "skill", id: "s1" }} onClose={() => {}} />);
+    const diff = screen.getByLabelText("Diff") as HTMLTextAreaElement;
+    fireEvent.change(diff, {
+      target: {
+        value:
+          "diff --git a/one.ts b/one.ts\n--- a/one.ts\n+++ b/one.ts\n@@ -1 +1 @@\n+x\n" +
+          "diff --git a/two.ts b/two.ts\n--- a/two.ts\n+++ b/two.ts\n@@ -1 +1 @@\n+y",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Files" }));
+    expect(screen.getByText("one.ts")).toBeInTheDocument();
+    expect(screen.getByText("two.ts")).toBeInTheDocument();
   });
 });
 

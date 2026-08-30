@@ -19,15 +19,24 @@ import { useTranslations } from "next-intl";
 import { Button, Modal, TextInput, Toggle } from "@devdigest/ui";
 import type {
   EvalCaseInput,
+  EvalCaseWithRuns,
   EvalOwnerKind,
   FindingRecord,
+  PrFile,
 } from "@devdigest/shared";
 import { usePullDetail } from "@/lib/hooks/core";
-import { useCaseRuns, useCreateEvalCase, useRunCase } from "@/lib/hooks/evals";
+import {
+  useCaseRuns,
+  useCreateEvalCase,
+  useRunCase,
+  useUpdateEvalCase,
+} from "@/lib/hooks/evals";
 import { ExpectationBadge } from "@/components/evals/ExpectationBadge";
 import { ReproRateStrip } from "@/components/evals/ReproRate";
 import { JsonEditorField } from "./_components/JsonEditorField";
 import { InputTabs, type InputTabKey } from "./_components/InputTabs";
+import { InputAuthor, type AuthorState } from "./_components/InputAuthor";
+import { buildUnifiedDiff, splitUnifiedDiff } from "./diff";
 import {
   deriveKind,
   initialExpectedOutput,
@@ -47,37 +56,63 @@ export interface EvalCaseModalProps {
   finding?: FindingRecord | null;
   /** The PR whose detail seeds the Diff/Files/PR-meta tabs (AC-1). */
   prId?: string | null;
+  /** An existing case to EDIT (prefilled + saved via update); omit to create. */
+  existingCase?: EvalCaseWithRuns | null;
   onClose: () => void;
 }
 
-export function EvalCaseModal({ owner, finding, prId, onClose }: EvalCaseModalProps) {
+export function EvalCaseModal({ owner, finding, prId, existingCase, onClose }: EvalCaseModalProps) {
   const t = useTranslations("eval");
+  const isEdit = !!existingCase;
+  // A finding-derived case shows the seeded PR context read-only (AC-1); a blank
+  // create OR an edit uses the editable Before/After authoring surface (InputAuthor).
+  const authoring = !finding;
 
-  const [name, setName] = React.useState(() => seedName(finding));
+  const [name, setName] = React.useState(() => existingCase?.name ?? seedName(finding));
   const [expectedText, setExpectedText] = React.useState(() =>
-    stringifyExpected(initialExpectedOutput(finding)),
+    existingCase
+      ? JSON.stringify(existingCase.expected_output, null, 2)
+      : stringifyExpected(initialExpectedOutput(finding)),
   );
   const [activeTab, setActiveTab] = React.useState<InputTabKey>("diff");
   const [selectedFile, setSelectedFile] = React.useState<string | null>(finding?.file ?? null);
-  const [runOnSave, setRunOnSave] = React.useState(true);
+  const [runOnSave, setRunOnSave] = React.useState(false);
   const [createdCaseId, setCreatedCaseId] = React.useState<string | null>(null);
+  const [author, setAuthor] = React.useState<AuthorState>(() => initialAuthorState(existingCase));
+  const updateAuthor = (patch: Partial<AuthorState>) => setAuthor((a) => ({ ...a, ...patch }));
 
   const detail = usePullDetail(prId ?? null).data;
   const create = useCreateEvalCase();
+  const update = useUpdateEvalCase();
   const run = useRunCase();
   const runsQuery = useCaseRuns(createdCaseId);
 
   const parsed = parseExpected(expectedText);
   const valid = parsed.ok;
-  const canSave = valid && name.trim().length > 0 && !create.isPending && !run.isPending;
+  const busy = create.isPending || update.isPending || run.isPending;
+  const canSave = valid && name.trim().length > 0 && !busy;
 
   const kind = finding ? deriveKind(finding) : "must_find";
-  const diffText = seedDiff(detail, finding?.file);
-  const meta = {
-    title: detail?.title ?? "",
-    body: detail?.body ?? "",
-    linkedIssue: detail?.linked_issue ?? null,
-  };
+  // The input diff/files/meta come from the authoring surface, or (finding-derived)
+  // the seeded PR detail.
+  const diffText = authoring
+    ? buildUnifiedDiff({ file: author.file, before: author.before, after: author.after, newFile: author.mode === "new" })
+    : seedDiff(detail, finding?.file);
+  const sourceFiles: PrFile[] = detail?.files ?? [];
+  const meta = authoring
+    ? { title: author.title, body: author.body, linkedIssue: null }
+    : {
+        title: detail?.title ?? "",
+        body: detail?.body ?? "",
+        linkedIssue: detail?.linked_issue ?? null,
+      };
+
+  // The last run's actual output (a { with, without } object for skill cases), from a
+  // just-triggered run or the case's stored last run — shown read-only in the modal.
+  const actualOutput =
+    (runsQuery.data && runsQuery.data[0]?.actual_output) ??
+    existingCase?.last_run?.actual_output ??
+    null;
 
   async function save(forceRun: boolean) {
     const expected = parseExpected(expectedText);
@@ -88,26 +123,34 @@ export function EvalCaseModal({ owner, finding, prId, onClose }: EvalCaseModalPr
       owner_id: owner.id,
       name: name.trim(),
       input_diff: diffText,
-      input_files: detail?.files ?? null,
-      input_meta: detail
-        ? { title: detail.title, body: detail.body ?? null, linked_issue: detail.linked_issue ?? null }
-        : null,
+      input_files: authoring ? null : (detail?.files ?? null),
+      input_meta: authoring
+        ? { title: author.title, body: author.body || null, linked_issue: null }
+        : detail
+          ? { title: detail.title, body: detail.body ?? null, linked_issue: detail.linked_issue ?? null }
+          : null,
       expected_output: expected.value,
-      notes: finding ? `Seeded from finding ${finding.id}` : null,
+      notes: isEdit
+        ? ((existingCase as { notes?: string | null }).notes ?? null)
+        : finding
+          ? `Seeded from finding ${finding.id}`
+          : null,
     };
 
-    let created;
+    let saved;
     try {
-      created = await create.mutateAsync(input);
+      saved = isEdit
+        ? await update.mutateAsync({ id: existingCase!.id, patch: input })
+        : await create.mutateAsync(input);
     } catch {
-      return; // surfaced via create.isError; never throws mid-demo (AC-27)
+      return; // surfaced via create/update.isError; never throws mid-demo (AC-27)
     }
 
     if (forceRun || runOnSave) {
-      setCreatedCaseId(created.id);
+      setCreatedCaseId(saved.id);
       // A live run with no provider key rejects — swallow it; run.isError drives a
       // non-throwing error state in the strip area (AC-27).
-      await run.mutateAsync({ caseId: created.id, times: 1 }).catch(() => {});
+      await run.mutateAsync({ caseId: saved.id, times: 1 }).catch(() => {});
       return; // keep the modal open so the run result is visible (AC-5)
     }
     onClose();
@@ -138,7 +181,7 @@ export function EvalCaseModal({ owner, finding, prId, onClose }: EvalCaseModalPr
             <Button kind="secondary" icon="Play" disabled={!canSave} loading={run.isPending} onClick={() => save(true)}>
               {t("caseModal.runCase")}
             </Button>
-            <Button kind="primary" icon="Check" disabled={!canSave} loading={create.isPending} onClick={() => save(false)}>
+            <Button kind="primary" icon="Check" disabled={!canSave} loading={create.isPending || update.isPending} onClick={() => save(false)}>
               {t("caseModal.save")}
             </Button>
           </div>
@@ -168,15 +211,19 @@ export function EvalCaseModal({ owner, finding, prId, onClose }: EvalCaseModalPr
 
           <div>
             <div style={s.fieldLabel}>{t("caseModal.inputLabel")}</div>
-            <InputTabs
-              active={activeTab}
-              onTab={setActiveTab}
-              diffText={diffText}
-              files={detail?.files ?? []}
-              selectedFile={selectedFile}
-              onSelectFile={setSelectedFile}
-              meta={meta}
-            />
+            {authoring ? (
+              <InputAuthor value={author} onChange={updateAuthor} />
+            ) : (
+              <InputTabs
+                active={activeTab}
+                onTab={setActiveTab}
+                diffText={diffText}
+                files={sourceFiles}
+                selectedFile={selectedFile}
+                onSelectFile={setSelectedFile}
+                meta={meta}
+              />
+            )}
           </div>
         </div>
 
@@ -187,6 +234,13 @@ export function EvalCaseModal({ owner, finding, prId, onClose }: EvalCaseModalPr
             valid={valid}
             onInsertSkeleton={() => setExpectedText((text) => withSkeleton(text))}
           />
+
+          {actualOutput != null && (
+            <div>
+              <div style={s.fieldLabel}>{t("caseModal.actualOutput")}</div>
+              <pre style={s.filePreview}>{JSON.stringify(actualOutput, null, 2)}</pre>
+            </div>
+          )}
 
           {createdCaseId && (
             <div style={s.runResultWrap}>
@@ -201,4 +255,22 @@ export function EvalCaseModal({ owner, finding, prId, onClose }: EvalCaseModalPr
       </div>
     </Modal>
   );
+}
+
+/** Seed the Before/After authoring state — reconstructed from a case being edited
+    (its stored diff/meta), or a blank slate for a new case. */
+function initialAuthorState(existing?: EvalCaseWithRuns | null): AuthorState {
+  if (existing) {
+    const parts = splitUnifiedDiff(existing.input_diff ?? "");
+    const m = existing.input_meta as { title?: string; body?: string | null } | null | undefined;
+    return {
+      file: parts.file,
+      mode: parts.newFile ? "new" : "modified",
+      before: parts.before,
+      after: parts.after,
+      title: m?.title ?? "",
+      body: m?.body ?? "",
+    };
+  }
+  return { file: "snippet.ts", mode: "modified", before: "", after: "", title: "", body: "" };
 }

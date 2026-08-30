@@ -256,27 +256,34 @@ d('EvalService (DB-backed)', () => {
     const results = await svc.runCaseTimes(workspaceId, created.id, 1);
     expect(results).toHaveLength(1);
 
-    // AC-19 — exactly ONE model call (the review); scoring stays zero-LLM.
+    // AC-19 — a SKILL case runs TWICE per execution: once WITH the skill body injected
+    // and once ablated (skills: []), so the tab can show "With skill / Without skill".
+    // Scoring stays zero-LLM — the only model calls are these two reviews.
     const structuredCalls = mock.calls.filter((c) => c.method === 'completeStructured');
-    expect(structuredCalls).toHaveLength(1);
+    expect(structuredCalls).toHaveLength(2);
 
-    // The assembled ReviewInput is EVAL_SKILL_HOST_PROMPT + [skill.body], nothing
-    // agent-specific: the system message opens with the fixed host prompt, and the
-    // user carries the resolved skill BODY (v2's current body, not its id).
-    const req = structuredCalls[0]!.req as { messages: { role: string; content: string }[] };
-    const system = req.messages.find((m) => m.role === 'system')!.content;
-    const user = req.messages.find((m) => m.role === 'user')!.content;
-    expect(system.startsWith(EVAL_SKILL_HOST_PROMPT)).toBe(true);
-    expect(user).toContain('## Skills / rules');
-    expect(user).toContain(finalBody);
+    const messagesOf = (i: number) =>
+      (structuredCalls[i]!.req as { messages: { role: string; content: string }[] }).messages;
+    const systems = [0, 1].map((i) => messagesOf(i).find((m) => m.role === 'system')!.content);
+    const users = [0, 1].map((i) => messagesOf(i).find((m) => m.role === 'user')!.content);
 
-    // skill.version (2) is pinned into the run's agent_version.
+    // Both sides use the fixed host prompt (EVAL_SKILL_HOST_PROMPT), nothing agent-specific.
+    expect(systems.every((sys) => sys.startsWith(EVAL_SKILL_HOST_PROMPT))).toBe(true);
+    // Exactly one call injects the resolved skill BODY (WITH, v2's current body); the
+    // other has no skills section at all (WITHOUT — the ablation).
+    expect(users.filter((u) => u.includes(finalBody))).toHaveLength(1);
+    expect(users.filter((u) => !u.includes('## Skills / rules'))).toHaveLength(1);
+
+    // Still ONE persisted eval_run, version pinned, carrying the paired { with, without }.
     const runs = await pg.handle.db
       .select()
       .from(t.evalRuns)
       .where(eq(t.evalRuns.caseId, created.id));
     expect(runs).toHaveLength(1);
     expect(runs[0]!.agentVersion).toBe(2);
+    const ao = runs[0]!.actualOutput as { with?: unknown; without?: unknown };
+    expect(ao.with).toBeDefined();
+    expect(ao.without).toBeDefined();
   });
 
   it('the agents-only dashboard lists no skill owners (AC-20)', async () => {

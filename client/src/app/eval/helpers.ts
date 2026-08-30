@@ -23,6 +23,12 @@ export function passSummary(batch: EvalBatch | null | undefined): string {
   return `${batch.traces_passed}/${batch.traces_total} pass`;
 }
 
+/** A USD cost as "$0.23", or "—" when the cost is unknown (seeded/no-key runs). */
+export function money(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return `$${n.toFixed(2)}`;
+}
+
 /** A batch's short version label ("v6", or "unpinned" when null). */
 export function versionLabel(version: number | null | undefined): string {
   return version == null ? "unpinned" : `v${version}`;

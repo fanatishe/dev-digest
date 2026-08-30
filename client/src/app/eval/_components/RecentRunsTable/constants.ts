@@ -9,11 +9,12 @@ export const COPY = {
   selectLabel: (version: string, when: string): string =>
     `Select run ${version} from ${when}`,
   col: {
-    version: "Version",
     ranAt: "Ran at",
+    version: "Version",
     recall: "Recall",
     precision: "Precision",
     citation: "Citation",
     pass: "Pass",
+    cost: "Cost",
   },
 } as const;

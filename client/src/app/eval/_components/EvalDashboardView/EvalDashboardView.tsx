@@ -11,7 +11,6 @@ import React from "react";
 import Link from "next/link";
 import {
   Badge,
-  BarRow,
   Button,
   EmptyState,
   ErrorState,
@@ -20,13 +19,35 @@ import {
   Skeleton,
   Sparkline,
 } from "@devdigest/ui";
-import type { EvalDashboardRow } from "@devdigest/shared";
+import type { EvalBatch, EvalDashboardRow } from "@devdigest/shared";
 import { AppShell } from "@/components/app-shell";
 import { useEvalDashboard, useDashboardRunAll } from "@/lib/hooks/evals";
 import { useSecretsStatus } from "@/lib/hooks/core";
 import { pct, passSummary, versionLabel, shortWhen } from "../../helpers";
+import { METRICS } from "../../constants";
+import { MetricBar } from "../MetricBar";
 import { COPY } from "./constants";
 import { s } from "./styles";
+
+/** One row in the "recent eval runs · all agents" list: agent name + the batch's
+    three colored metric bars + pass count (matches the per-agent detail table). */
+function RecentRunRow({ name, batch }: { name: string; batch: EvalBatch }) {
+  return (
+    <div style={s.recentRow}>
+      <span style={s.recentName}>{name}</span>
+      <span style={s.recentWhen}>{shortWhen(batch.ran_at)}</span>
+      <Badge mono bg="transparent" style={s.recentVersion}>
+        {versionLabel(batch.agent_version)}
+      </Badge>
+      <MetricBar value={batch.recall} color={METRICS[0].color} title={`${COPY.metrics.recall} ${batch.recall}`} />
+      <MetricBar value={batch.precision} color={METRICS[1].color} title={`${COPY.metrics.precision} ${batch.precision}`} />
+      <MetricBar value={batch.citation_accuracy} color={METRICS[2].color} title={`${COPY.metrics.citation} ${batch.citation_accuracy}`} />
+      <span style={s.recentPass} title={passSummary(batch)}>
+        {batch.traces_passed}/{batch.traces_total}
+      </span>
+    </div>
+  );
+}
 
 function AgentRow({ row }: { row: EvalDashboardRow }) {
   const b = row.last_batch;
@@ -67,6 +88,12 @@ export function EvalDashboardView() {
   const secrets = useSecretsStatus();
   const runAll = useDashboardRunAll();
   const hasKey = secrets.data?.openrouter ?? false;
+
+  // Recent batches carry only owner_id; resolve the agent name from the rows.
+  const nameByOwner = React.useMemo(
+    () => new Map((data?.agents ?? []).map((a) => [a.owner_id, a.name])),
+    [data?.agents],
+  );
 
   return (
     <AppShell crumb={[{ label: COPY.crumbLab }, { label: COPY.crumb }]}>
@@ -124,12 +151,10 @@ export function EvalDashboardView() {
                 <SectionLabel icon="History">{COPY.recentRuns}</SectionLabel>
                 <div style={s.recentList}>
                   {data.recent_batches.map((batch) => (
-                    <BarRow
+                    <RecentRunRow
                       key={batch.id}
-                      label={`${versionLabel(batch.agent_version)} · ${shortWhen(batch.ran_at)}`}
-                      value={batch.pass_rate}
-                      max={1}
-                      suffix={pct(batch.pass_rate)}
+                      name={nameByOwner.get(batch.owner_id) ?? versionLabel(batch.agent_version)}
+                      batch={batch}
                     />
                   ))}
                 </div>

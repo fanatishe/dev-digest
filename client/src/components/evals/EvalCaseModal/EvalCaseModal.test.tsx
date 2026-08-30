@@ -11,6 +11,7 @@ import prReviewMessages from "../../../../messages/en/prReview.json";
 //      route-scoped FindingsPanel.test.tsx, which may legally import FindingsPanel. ----
 const h = vi.hoisted(() => ({
   createMutate: vi.fn(),
+  updateMutate: vi.fn(),
   runMutate: vi.fn(),
   caseRuns: { data: [] as unknown[] },
 }));
@@ -20,6 +21,7 @@ vi.mock("@/lib/hooks/core", () => ({
 }));
 vi.mock("@/lib/hooks/evals", () => ({
   useCreateEvalCase: () => ({ mutateAsync: h.createMutate, isPending: false, isError: false }),
+  useUpdateEvalCase: () => ({ mutateAsync: h.updateMutate, isPending: false, isError: false }),
   useRunCase: () => ({ mutateAsync: h.runMutate, isPending: false, isError: false }),
   useCaseRuns: () => ({ data: h.caseRuns.data }),
 }));
@@ -115,12 +117,12 @@ describe("EvalCaseModal — expected-output validity (AC-4)", () => {
 });
 
 describe("EvalCaseModal — run on save (AC-5)", () => {
-  it("does not run when the toggle is off, and closes", async () => {
+  it("does not run when the toggle is off (the default), and closes", async () => {
     const onClose = vi.fn();
     renderWithIntl(
       <EvalCaseModal owner={{ kind: "agent", id: "a1" }} finding={finding({ id: "f1" })} prId="pr1" onClose={onClose} />,
     );
-    fireEvent.click(screen.getByRole("switch")); // Run on save: on -> off
+    // Run on save now defaults OFF — a plain Save must not trigger a run.
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -128,17 +130,51 @@ describe("EvalCaseModal — run on save (AC-5)", () => {
     expect(h.runMutate).not.toHaveBeenCalled();
   });
 
-  it("runs once and shows a ReproRateStrip when the toggle is on", async () => {
+  it("runs once and shows a ReproRateStrip when the toggle is turned on", async () => {
     h.caseRuns.data = [
       { id: "run1", case_id: "case1", case_name: null, ran_at: "2026-07-19T00:00:00Z", actual_output: null, pass: true, recall: 1, precision: 1, citation_accuracy: 1, duration_ms: 1800, cost_usd: 0.02 },
     ];
     renderWithIntl(
       <EvalCaseModal owner={{ kind: "agent", id: "a1" }} finding={finding({ id: "f1" })} prId="pr1" onClose={() => {}} />,
     );
+    fireEvent.click(screen.getByRole("switch")); // Run on save: off -> on
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     expect(await screen.findByText("Last run passed")).toBeInTheDocument();
     expect(h.createMutate).toHaveBeenCalledTimes(1);
     expect(h.runMutate).toHaveBeenCalledWith({ caseId: "case1", times: 1 });
+  });
+});
+
+describe("EvalCaseModal — edit mode", () => {
+  const existing = {
+    id: "case9",
+    workspace_id: "ws1",
+    owner_kind: "agent",
+    owner_id: "a1",
+    name: "my-existing-case",
+    input_diff: "diff --git a/x b/x",
+    input_files: null,
+    input_meta: null,
+    expected_output: { expectations: [{ kind: "must_find", file: "src/x.ts", start_line: 3, end_line: 4 }] },
+    notes: null,
+  } as unknown as import("@devdigest/shared").EvalCaseWithRuns;
+
+  it("prefills from the existing case and saves via update, not create", async () => {
+    const onClose = vi.fn();
+    h.updateMutate.mockReset().mockResolvedValue({ id: "case9" });
+    renderWithIntl(
+      <EvalCaseModal owner={{ kind: "agent", id: "a1" }} existingCase={existing} onClose={onClose} />,
+    );
+    // Name + expected-output are prefilled from the stored case.
+    expect(screen.getByDisplayValue("my-existing-case")).toBeInTheDocument();
+    expect(jsonEditor().value).toContain('"file": "src/x.ts"');
+
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(h.updateMutate).toHaveBeenCalledTimes(1);
+    expect(h.updateMutate.mock.calls[0]![0]).toMatchObject({ id: "case9" });
+    expect(h.createMutate).not.toHaveBeenCalled();
   });
 });

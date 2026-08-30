@@ -9,9 +9,17 @@
 import React from "react";
 import { Checkbox, Button, Badge } from "@devdigest/ui";
 import type { EvalBatch } from "@devdigest/shared";
-import { pct, shortWhen, versionLabel, passSummary } from "../../helpers";
+import { shortWhen, versionLabel, passSummary, money } from "../../helpers";
+import { METRICS } from "../../constants";
+import { MetricBar } from "../MetricBar";
 import { COPY } from "./constants";
 import { s } from "./styles";
+
+const COLOR: Record<"recall" | "precision" | "citation", string> = {
+  recall: METRICS[0].color,
+  precision: METRICS[1].color,
+  citation: METRICS[2].color,
+};
 
 export function RecentRunsTable({
   batches,
@@ -31,7 +39,18 @@ export function RecentRunsTable({
   const canCompare = selected.length === 2;
 
   const compare = () => {
-    if (canCompare) onCompare(selected[0]!, selected[1]!);
+    if (!canCompare) return;
+    // Compare always reads older → newer so the delta is chronological and Promote
+    // (which targets `head`) promotes the HIGHER version. Selection order is not
+    // meaningful, so order the two by (version, ran_at) ascending here.
+    const [a, b] = selected
+      .map((id) => batches.find((x) => x.id === id)!)
+      .sort(
+        (x, y) =>
+          (x.agent_version ?? 0) - (y.agent_version ?? 0) ||
+          Date.parse(x.ran_at) - Date.parse(y.ran_at),
+      );
+    onCompare(a!.id, b!.id);
   };
 
   if (batches.length === 0) {
@@ -58,12 +77,13 @@ export function RecentRunsTable({
 
       <div style={s.headerRow} aria-hidden>
         <span />
-        <span>{COPY.col.version}</span>
         <span>{COPY.col.ranAt}</span>
-        <span style={s.num}>{COPY.col.recall}</span>
-        <span style={s.num}>{COPY.col.precision}</span>
-        <span style={s.num}>{COPY.col.citation}</span>
+        <span>{COPY.col.version}</span>
+        <span>{COPY.col.recall}</span>
+        <span>{COPY.col.precision}</span>
+        <span>{COPY.col.citation}</span>
         <span style={s.num}>{COPY.col.pass}</span>
+        <span style={s.num}>{COPY.col.cost}</span>
       </div>
 
       <ul style={s.list}>
@@ -80,14 +100,17 @@ export function RecentRunsTable({
                   </span>
                 }
               />
+              <span style={s.when}>{shortWhen(b.ran_at)}</span>
               <Badge mono bg="transparent" style={s.versionBadge}>
                 {versionLabel(b.agent_version)}
               </Badge>
-              <span style={s.when}>{shortWhen(b.ran_at)}</span>
-              <span style={s.num}>{pct(b.recall)}</span>
-              <span style={s.num}>{pct(b.precision)}</span>
-              <span style={s.num}>{pct(b.citation_accuracy)}</span>
-              <span style={s.num}>{passSummary(b)}</span>
+              <MetricBar value={b.recall} color={COLOR.recall} title={`${COPY.col.recall} ${b.recall}`} />
+              <MetricBar value={b.precision} color={COLOR.precision} title={`${COPY.col.precision} ${b.precision}`} />
+              <MetricBar value={b.citation_accuracy} color={COLOR.citation} title={`${COPY.col.citation} ${b.citation_accuracy}`} />
+              <span style={s.num} title={passSummary(b)}>
+                {b.traces_passed}/{b.traces_total}
+              </span>
+              <span style={s.num}>{money(b.cost_usd)}</span>
             </li>
           );
         })}

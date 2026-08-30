@@ -52,7 +52,36 @@ export const s = {
     color: "var(--text-muted)",
   } satisfies CSSProperties,
   recent: { marginTop: 30 } satisfies CSSProperties,
-  recentList: { marginTop: 10 } satisfies CSSProperties,
+  recentList: { marginTop: 10, display: "flex", flexDirection: "column", gap: 4 } satisfies CSSProperties,
+  recentRow: {
+    display: "grid",
+    gridTemplateColumns:
+      "minmax(140px,1.4fr) 128px 44px minmax(84px,1fr) minmax(84px,1fr) minmax(84px,1fr) 56px",
+    alignItems: "center",
+    gap: 14,
+    padding: "9px 14px",
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    background: "var(--bg-elevated)",
+    fontSize: 13,
+  } satisfies CSSProperties,
+  recentName: {
+    fontWeight: 600,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  } satisfies CSSProperties,
+  recentWhen: { color: "var(--text-secondary)", whiteSpace: "nowrap" } satisfies CSSProperties,
+  recentVersion: {
+    border: "1px solid var(--border)",
+    color: "var(--text-secondary)",
+    justifySelf: "start",
+  } satisfies CSSProperties,
+  recentPass: {
+    textAlign: "right",
+    fontWeight: 600,
+    fontVariantNumeric: "tabular-nums",
+  } satisfies CSSProperties,
   runError: {
     padding: "10px 14px",
     borderRadius: 8,

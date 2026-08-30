@@ -153,10 +153,18 @@ export class EvalService {
     if (!caseRow) throw new NotFoundError('Eval case not found');
 
     const resolved = await this.resolveRun(workspaceId, caseRow.ownerKind, caseRow.ownerId);
+    const isSkill = caseRow.ownerKind === 'skill';
     const results: EvalRunResult[] = [];
     for (let i = 0; i < times; i += 1) {
       const exec = await this.executor.runCase(resolved.config, caseRow, resolved.llm);
-      results.push(await this.persistRun(caseRow, exec, resolved.config.agentVersion, null));
+      // Skill cases run a SECOND time with the skill ablated (skills: []) so the UI
+      // can show the skill's marginal effect ("With skill X% / Without skill Y%").
+      const withoutExec = isSkill
+        ? await this.executor.runCase({ ...resolved.config, skills: [] }, caseRow, resolved.llm)
+        : null;
+      results.push(
+        await this.persistRun(caseRow, exec, resolved.config.agentVersion, null, withoutExec),
+      );
     }
     return results;
   }
@@ -190,10 +198,19 @@ export class EvalService {
     const cases = await this.repo.listCases(workspaceId, ownerKind, ownerId);
 
     // Execute each case once (the single LLM call per case lives in the executor).
-    const executed: { caseRow: EvalCaseRow; exec: EvalCaseExecution }[] = [];
+    // Skill cases also run once WITHOUT the skill (ablation) for the with/without UI.
+    const isSkill = ownerKind === 'skill';
+    const executed: {
+      caseRow: EvalCaseRow;
+      exec: EvalCaseExecution;
+      withoutExec: EvalCaseExecution | null;
+    }[] = [];
     for (const caseRow of cases) {
       const exec = await this.executor.runCase(resolved.config, caseRow, resolved.llm);
-      executed.push({ caseRow, exec });
+      const withoutExec = isSkill
+        ? await this.executor.runCase({ ...resolved.config, skills: [] }, caseRow, resolved.llm)
+        : null;
+      executed.push({ caseRow, exec, withoutExec });
     }
 
     // Micro-average — ZERO-LLM (pure scorer).
@@ -204,8 +221,13 @@ export class EvalService {
       producedCount: exec.producedCount,
     }));
     const batchScore = scoreBatch(batchCases);
-    const costUsd = sumCost(executed.map((e) => e.exec.costUsd));
-    const durationMs = executed.reduce((n, e) => n + e.exec.durationMs, 0);
+    // Cost/duration count BOTH sides of a skill case (two LLM calls); agent cases
+    // have no `withoutExec` so this is unchanged for them.
+    const costUsd = sumCost(executed.flatMap((e) => [e.exec.costUsd, e.withoutExec?.costUsd ?? null]));
+    const durationMs = executed.reduce(
+      (n, e) => n + e.exec.durationMs + (e.withoutExec?.durationMs ?? 0),
+      0,
+    );
 
     const batchRow = await this.repo.insertBatch({
       workspaceId,
@@ -225,8 +247,10 @@ export class EvalService {
 
     // One eval_runs per case, tagged with this batch id.
     const runs: EvalRunResult[] = [];
-    for (const { caseRow, exec } of executed) {
-      runs.push(await this.persistRun(caseRow, exec, resolved.config.agentVersion, batchRow.id));
+    for (const { caseRow, exec, withoutExec } of executed) {
+      runs.push(
+        await this.persistRun(caseRow, exec, resolved.config.agentVersion, batchRow.id, withoutExec),
+      );
     }
     return { batch: toEvalBatchDto(batchRow), runs };
   }
@@ -500,16 +524,29 @@ export class EvalService {
     exec: EvalCaseExecution,
     agentVersion: number | null,
     batchId: string | null,
+    withoutExec?: EvalCaseExecution | null,
   ): Promise<EvalRunResult> {
+    // Scalar metric columns always hold the WITH-skill (primary) result, so every
+    // existing dashboard/repro/batch aggregate keeps its meaning. When a skill case
+    // also ran ablated, `actual_output` carries BOTH sides ({ with, without }) so the
+    // UI can show "With skill / Without skill"; otherwise it stays the grounded list.
+    const actualOutput = withoutExec
+      ? { with: execSide(exec), without: execSide(withoutExec) }
+      : exec.grounded;
+    const durationMs = exec.durationMs + (withoutExec?.durationMs ?? 0);
+    const costUsd = withoutExec
+      ? sumCost([exec.costUsd, withoutExec.costUsd])
+      : exec.costUsd;
+
     const runRow = await this.repo.insertRun({
       caseId: caseRow.id,
-      actualOutput: exec.grounded,
+      actualOutput,
       pass: exec.score.pass,
       recall: exec.score.recall,
       precision: exec.score.precision,
       citationAccuracy: exec.score.citationAccuracy,
-      durationMs: exec.durationMs,
-      costUsd: exec.costUsd,
+      durationMs,
+      costUsd,
       batchId,
       agentVersion,
     });
@@ -546,6 +583,17 @@ export class EvalService {
     prompt: EVAL_SKILL_HOST_PROMPT,
     provider: EVAL_SKILL_HOST_PROVIDER,
     model: EVAL_SKILL_HOST_MODEL,
+  };
+}
+
+/** The persisted per-side payload for a skill run's paired `actual_output`. */
+function execSide(e: EvalCaseExecution) {
+  return {
+    grounded: e.grounded,
+    recall: e.score.recall,
+    precision: e.score.precision,
+    citation_accuracy: e.score.citationAccuracy,
+    pass: e.score.pass,
   };
 }
 

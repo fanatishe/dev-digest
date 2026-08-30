@@ -8,13 +8,19 @@ import React from "react";
 import type { EvalCaseWithRuns } from "@devdigest/shared";
 import { EvalCaseRow } from "@/components/evals/EvalCaseRow";
 
-export function EvalCasesList({ cases }: { cases: readonly EvalCaseWithRuns[] }) {
+export function EvalCasesList({
+  cases,
+  onEdit,
+}: {
+  cases: readonly EvalCaseWithRuns[];
+  onEdit?: (evalCase: EvalCaseWithRuns) => void;
+}) {
   return (
     <ul
       style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}
     >
       {cases.map((c) => (
-        <EvalCaseRow key={c.id} evalCase={c} />
+        <EvalCaseRow key={c.id} evalCase={c} onEdit={onEdit} />
       ))}
     </ul>
   );

@@ -21,6 +21,7 @@ vi.mock("@/lib/hooks/core", () => ({
 }));
 vi.mock("@/lib/hooks/evals", () => ({
   useCreateEvalCase: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false }),
+  useUpdateEvalCase: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false }),
   useRunCase: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false }),
   useCaseRuns: () => ({ data: [] }),
 }));

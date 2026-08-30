@@ -18,10 +18,19 @@ import { useConfirm } from "@/lib/confirm";
 import { useDeleteEvalCase, useRunCase } from "@/lib/hooks/evals";
 import { ExpectationBadge } from "@/components/evals/ExpectationBadge";
 import { ReproRateBadge } from "@/components/evals/ReproRate";
-import { distinctKinds, metaLine, parseExpectations, primaryRef } from "./helpers";
+import { distinctKinds, metaLine, parseExpectations, primaryRef, readSkillPair } from "./helpers";
 import { s } from "./styles";
 
-export function EvalCaseRow({ evalCase }: { evalCase: EvalCaseWithRuns }) {
+/** A 0..1 metric as a whole-percent string. */
+const pctText = (n: number): string => `${Math.round(n * 100)}%`;
+
+export function EvalCaseRow({
+  evalCase,
+  onEdit,
+}: {
+  evalCase: EvalCaseWithRuns;
+  onEdit?: (evalCase: EvalCaseWithRuns) => void;
+}) {
   const t = useTranslations("eval");
   const confirm = useConfirm();
   const run = useRunCase();
@@ -32,6 +41,7 @@ export function EvalCaseRow({ evalCase }: { evalCase: EvalCaseWithRuns }) {
   const ref = primaryRef(expectations);
   const meta = metaLine(expectations);
   const lastRun = evalCase.last_run;
+  const skillPair = readSkillPair(lastRun?.actual_output);
 
   const unrun = !lastRun || lastRun.pass === null;
   const passLabel = unrun
@@ -61,6 +71,14 @@ export function EvalCaseRow({ evalCase }: { evalCase: EvalCaseWithRuns }) {
         </div>
       </div>
 
+      {skillPair && (
+        <span style={s.skillPair}>
+          {t("evalsTab.withSkill", { pct: pctText(skillPair.withRecall) })}
+          {" / "}
+          {t("evalsTab.withoutSkill", { pct: pctText(skillPair.withoutRecall) })}
+        </span>
+      )}
+
       {meta && <span style={s.meta}>{meta}</span>}
 
       <div style={s.right}>
@@ -76,6 +94,15 @@ export function EvalCaseRow({ evalCase }: { evalCase: EvalCaseWithRuns }) {
           aria-label={t("evalsTab.run")}
           onClick={() => run.mutate({ caseId: evalCase.id, times: 5 })}
         />
+        {onEdit && (
+          <Button
+            kind="ghost"
+            size="sm"
+            icon="Edit"
+            aria-label={t("evalsTab.edit")}
+            onClick={() => onEdit(evalCase)}
+          />
+        )}
         <Button
           kind="ghost"
           size="sm"

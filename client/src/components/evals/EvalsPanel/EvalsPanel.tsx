@@ -24,7 +24,7 @@ import React from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Button, EmptyState, MetricCard, SectionLabel, Skeleton } from "@devdigest/ui";
-import type { EvalOwnerKind } from "@devdigest/shared";
+import type { EvalCaseWithRuns, EvalOwnerKind } from "@devdigest/shared";
 import { useEvalCases, useRunAll } from "@/lib/hooks/evals";
 import { EvalCaseModal } from "@/components/evals/EvalCaseModal";
 import { EvalCasesList } from "@/components/evals/EvalCasesList";
@@ -47,6 +47,7 @@ export function EvalsPanel({
 }: EvalsPanelProps) {
   const t = useTranslations("agents");
   const [creating, setCreating] = React.useState(false);
+  const [editing, setEditing] = React.useState<EvalCaseWithRuns | null>(null);
 
   const cases = useEvalCases(owner);
   // useRunAll targets the agents run-all endpoint; only wired for agent owners.
@@ -122,7 +123,7 @@ export function EvalsPanel({
           onCta={() => setCreating(true)}
         />
       ) : (
-        <EvalCasesList cases={rows} />
+        <EvalCasesList cases={rows} onEdit={setEditing} />
       )}
 
       {showDashboardLink && isAgent && (
@@ -134,6 +135,13 @@ export function EvalsPanel({
       )}
 
       {creating && <EvalCaseModal owner={owner} onClose={() => setCreating(false)} />}
+      {editing && (
+        <EvalCaseModal
+          owner={owner}
+          existingCase={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }

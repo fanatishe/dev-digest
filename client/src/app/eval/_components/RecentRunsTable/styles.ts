@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
-const GRID = "24px 64px 1fr 72px 84px 78px 96px";
+const GRID =
+  "24px 96px 52px minmax(84px,1.3fr) minmax(84px,1.3fr) minmax(84px,1.3fr) 60px 60px";
 
 export const s = {
   toolbar: {

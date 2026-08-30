@@ -71,7 +71,9 @@
     "run": "Run",
     "running": "Running…",
     "edit": "Edit",
-    "delete": "Delete"
+    "delete": "Delete",
+    "withSkill": "With skill {pct}",
+    "withoutSkill": "Without skill {pct}"
   },
   "page": {
     "crumbSkillsLab": "Skills Lab",
@@ -114,10 +116,18 @@
     "tabs": {
       "diff": "Diff",
       "files": "Files",
-      "prMeta": "PR meta"
+      "prMeta": "PR meta",
+      "code": "Code",
+      "modifiedFile": "Modified file",
+      "newFile": "New file"
     },
     "diffEmpty": "No diff to show for this file.",
     "filesEmpty": "This PR changes no files.",
+    "filePathLabel": "File path",
+    "before": "Before",
+    "after": "After",
+    "previewDiff": "Preview generated diff",
+    "actualOutput": "Actual output",
     "titleLabel": "Title",
     "bodyLabel": "Body",
     "linkedIssueLabel": "Linked issue",

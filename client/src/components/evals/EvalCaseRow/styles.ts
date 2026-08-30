@@ -23,5 +23,6 @@ export const s = {
   },
   ref: { fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono, monospace)" },
   meta: { fontSize: 11.5, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" },
+  skillPair: { fontSize: 11.5, color: "var(--text-secondary)", whiteSpace: "nowrap", flexShrink: 0 },
   right: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0 },
 } satisfies Record<string, React.CSSProperties>;

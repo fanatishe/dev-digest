@@ -26,6 +26,11 @@ import {
   goldsetAdhocInputs,
   goldsetBatchInputs,
 } from './fixtures/eval-goldset.js';
+import {
+  SKILL_GOLDSET_CASES,
+  SKILL_GOLDSET_SKILL_NAME,
+  skillGoldsetSides,
+} from './fixtures/eval-skill-goldset.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -469,6 +474,7 @@ Flag as WARNING if the diff:
 
   // ---- Eval gold-set (L06) — real scorer output, no LLM ------------------------
   await seedEvalGoldset(db, workspaceId, userId);
+  await seedEvalSkillGoldset(db, workspaceId);
 
   return { workspaceId, userId };
 }
@@ -628,6 +634,82 @@ export async function seedEvalGoldset(
         agentVersion: GOLDSET_PINNED_VERSION,
       });
     }
+  }
+}
+
+/**
+ * Seed the synthetic SKILL eval gold-set so the SkillEditor Evals tab's
+ * "With skill / Without skill" comparison is populated on a fresh DB with no key.
+ *
+ * Zero LLM: each case's synthetic with/without engine output (from the fixtures) is
+ * scored by the PURE scorer at seed time; the paired result is stored in
+ * `eval_runs.actual_output` ({ with, without }) with the scalar columns holding the
+ * WITH-skill numbers (so any owner-agnostic metric derivation reads the with-skill
+ * value). Idempotent: cases are insert-if-missing and the run is seeded only when the
+ * skill owner has none yet.
+ */
+export async function seedEvalSkillGoldset(db: Db, workspaceId: string): Promise<void> {
+  const skillsRepo = new SkillsRepository(db);
+  const skill = (await skillsRepo.list(workspaceId)).find(
+    (s) => s.name === SKILL_GOLDSET_SKILL_NAME,
+  );
+  if (!skill) return; // the demo skill is not seeded — nothing to attach to.
+
+  // Only seed once per skill owner (idempotent).
+  const [existing] = await db
+    .select({ id: t.evalCases.id })
+    .from(t.evalCases)
+    .where(
+      and(
+        eq(t.evalCases.ownerKind, 'skill'),
+        eq(t.evalCases.ownerId, skill.id),
+      ),
+    )
+    .limit(1);
+  if (existing) return;
+
+  for (const c of SKILL_GOLDSET_CASES) {
+    const [row] = await db
+      .insert(t.evalCases)
+      .values({
+        workspaceId,
+        ownerKind: 'skill',
+        ownerId: skill.id,
+        name: c.name,
+        inputDiff: c.inputDiff,
+        expectedOutput: c.expected,
+        notes: null,
+      })
+      .returning();
+
+    const { expectations, withGrounded, withoutGrounded } = skillGoldsetSides(c);
+    const withScore = scoreCase(expectations, withGrounded, withGrounded.length);
+    const withoutScore = scoreCase(expectations, withoutGrounded, withoutGrounded.length);
+    const side = (grounded: typeof withGrounded, sc: typeof withScore) => ({
+      grounded,
+      recall: sc.recall,
+      precision: sc.precision,
+      citation_accuracy: sc.citationAccuracy,
+      pass: sc.pass,
+    });
+
+    // Scalar columns = WITH-skill result; actual_output carries BOTH sides.
+    await db.insert(t.evalRuns).values({
+      caseId: row!.id,
+      ranAt: daysAgo(1),
+      actualOutput: {
+        with: side(withGrounded, withScore),
+        without: side(withoutGrounded, withoutScore),
+      },
+      pass: withScore.pass,
+      recall: withScore.recall,
+      precision: withScore.precision,
+      citationAccuracy: withScore.citationAccuracy,
+      durationMs: null,
+      costUsd: null,
+      batchId: null,
+      agentVersion: skill.version,
+    });
   }
 }
 

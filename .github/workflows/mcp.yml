@@ -44,6 +44,18 @@ jobs:
 
       - run: npm ci
 
+      # mcp aliases @devdigest/shared to server's PHYSICAL vendor files
+      # (../server/src/vendor/shared, import type only). Those files
+      # `import { z } from 'zod'`, and node resolves that from server/node_modules
+      # — which this job never installs. Point it at mcp's own zod (same 3.x) via a
+      # symlink so tsc can resolve it. A tsconfig `paths` zod-mapping is NOT an
+      # option here: it bypasses zod's package `exports` and makes every
+      # registerTool() call blow up with TS2589 (see tsconfig comment).
+      - name: Provide zod for the vendored shared contracts (type-check only)
+        run: |
+          mkdir -p ../server/node_modules
+          ln -sf ../../mcp/node_modules/zod ../server/node_modules/zod
+
       - run: npx tsc --noEmit -p tsconfig.json
 
       - run: npx vitest run

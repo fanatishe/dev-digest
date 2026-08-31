@@ -18,7 +18,7 @@ aliases, not published modules):
 | `mcp/`           | `@devdigest/mcp`            | Local MCP server (stdio): the reviewer as agent tools | —    |
 | `server/src/vendor/shared` | `@devdigest/shared` | Zod contracts shared across every package             | —    |
 
-`repo-intel` (the codebase indexer that powers the **Indexed** badge and feeds
+`repo-intel` (the codebase indexer which powers the **Indexed** badge and feeds
 project context into reviews) lives inside the server at
 [`server/src/modules/repo-intel`](server/src/modules/repo-intel). Only
 **Postgres** runs in Docker; the API and web app run on the host via `pnpm dev`.

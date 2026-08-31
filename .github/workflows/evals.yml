@@ -2,15 +2,24 @@
 #
 # A change detector (evals/scripts/ci-detect.mjs) maps the PR's changed files onto
 # the eval tiers, then three jobs run only what changed:
-#   • a skill changed        → run that skill's evals   (content tier, DeepSeek, no proxy)
-#   • an agent changed        → run that agent's evals   (tool tier, Gemini, LiteLLM proxy)
+#   • a skill changed        → run that skill's evals   (content tier, no proxy)
+#   • an agent changed        → run that agent's evals   (tool tier, LiteLLM proxy)
 #   • a CLAUDE.md / agent / engine change → run the workflow tier (tool tier, non-blocking)
 # A changed artifact with NO evals is SKIPped (logged), never a failure.
 #
 # Runs on OpenRouter (EVAL_BACKEND=openrouter). The key lives in the repo Actions
-# secret OPENROUTER_API_KEY — never in a file. Models are switchable via the
-# workflow_dispatch inputs below (Actions → evals → Run workflow) or by editing the
-# defaults here; no product code changes.
+# secret OPENROUTER_API_KEY — never in a file.
+#
+# MODELS — three independent knobs, one per tier, because the tiers need different strengths:
+#   • skills (content)  → cheap DeepSeek. Pure content quality; a small model is fine.
+#   • agents (tool)     → claude-sonnet-5. The strict architecture-reviewer eval requires the model
+#       to DETECT onion-layer violations in a diff AND cite DevDigest rule identifiers
+#       (service-no-fastify, core-purity-no-io — real names in .claude/skills/onion-architecture).
+#       Measured: gemini-2.5-flash misreads the diff and approves violating code (1/6) — too weak here.
+#   • workflow (tool)   → gemini-2.5-flash. This tier only asserts routing/dispatch/activation TRACES,
+#       which a cheap fast model handles (measured 11/13). No reason to pay for sonnet here.
+# The judge follows each tier's subject model; case thresholds are 0.6. All three are switchable via
+# the workflow_dispatch inputs below (Actions → evals → Run workflow) or by editing the defaults.
 name: evals
 
 on:
@@ -25,8 +34,11 @@ on:
       skills_model:
         description: 'Model slug for the skills (content) tier'
         default: 'deepseek/deepseek-chat'
-      tool_model:
-        description: 'Model slug for the agents + workflow (tool) tier'
+      agents_model:
+        description: 'Model slug for the agents (tool) tier — needs rule-ID citation, keep strong'
+        default: 'anthropic/claude-sonnet-5'
+      workflow_model:
+        description: 'Model slug for the workflow (tool) tier — trace-only, cheap model is fine'
         default: 'google/gemini-2.5-flash'
 
 permissions:
@@ -38,9 +50,10 @@ concurrency:
 
 env:
   # Model switch (no UI). PR runs have no inputs, so they fall through to the defaults;
-  # a manual run overrides from the Actions tab.
+  # a manual run overrides from the Actions tab. One knob per tier — see the MODELS note above.
   SKILLS_MODEL: ${{ inputs.skills_model || 'deepseek/deepseek-chat' }}
-  TOOL_MODEL: ${{ inputs.tool_model || 'google/gemini-2.5-flash' }}
+  AGENTS_MODEL: ${{ inputs.agents_model || 'anthropic/claude-sonnet-5' }}
+  WORKFLOW_MODEL: ${{ inputs.workflow_model || 'google/gemini-2.5-flash' }}
 
 jobs:
   # ── Job 1: detect what changed → matrix + skip lines (cheap, key-free gate) ──
@@ -129,7 +142,7 @@ jobs:
           EVAL_MODEL: ${{ env.SKILLS_MODEL }}
           EVAL_JUDGE_MODEL: ${{ env.SKILLS_MODEL }}
 
-  # ── Job 3: agents (tool tier) — LiteLLM proxy, Gemini, single-threaded, blocking ──
+  # ── Job 3: agents (tool tier) — LiteLLM proxy, Claude Sonnet subject+judge, single-threaded, blocking ──
   agents:
     name: agent:${{ matrix.agent }}
     needs: detect
@@ -164,20 +177,27 @@ jobs:
       - name: eval agent
         run: pnpm exec vitest run --no-file-parallelism agents/${{ matrix.agent }}
         env:
-          EVAL_MODEL: ${{ env.TOOL_MODEL }}
-          EVAL_JUDGE_MODEL: ${{ env.TOOL_MODEL }}
+          EVAL_MODEL: ${{ env.AGENTS_MODEL }}
+          EVAL_JUDGE_MODEL: ${{ env.AGENTS_MODEL }}
       - if: failure()
         run: docker compose -f proxy/docker-compose.yml logs --tail 100
       - if: always()
         run: docker compose -f proxy/docker-compose.yml down
 
-  # ── Job 4: workflow (tool tier) — LiteLLM proxy, Gemini, INFORMATIONAL ──
-  # Non-blocking: the README warns activation cases on non-Anthropic models are
-  # "indicative, not blocking".
+  # ── Job 4: workflow (tool tier) — LiteLLM proxy, Claude Sonnet subject+judge, INFORMATIONAL ──
+  # Non-blocking: the systemic routing/activation traces are the least deterministic tier
+  # (they depend on the whole on-disk harness), so this stays advisory even on Claude.
+  #
+  # Runs AFTER `agents` (not alongside it). Both tool tiers dispatch nested subagents through the
+  # same OpenRouter account, and running them concurrently doubled the in-flight request count and
+  # tripped OpenRouter's `in_flight_budget_exhausted` (402) — which the proxy retried on Retry-After,
+  # stalling calls to vitest's 240s timeout. Serializing the two tool tiers halves peak in-flight
+  # load. `needs` waits for agents to finish; `always()` keeps this running even when `agents` was
+  # skipped (no agent changed) or failed, gated still on run_workflow.
   workflow:
     name: workflow
-    needs: detect
-    if: needs.detect.outputs.run_workflow == 'true'
+    needs: [detect, agents]
+    if: always() && needs.detect.outputs.run_workflow == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
     defaults:
@@ -204,8 +224,12 @@ jobs:
       - name: eval workflow
         run: pnpm exec vitest run --no-file-parallelism workflow
         env:
-          EVAL_MODEL: ${{ env.TOOL_MODEL }}
-          EVAL_JUDGE_MODEL: ${{ env.TOOL_MODEL }}
+          EVAL_MODEL: ${{ env.WORKFLOW_MODEL }}
+          EVAL_JUDGE_MODEL: ${{ env.WORKFLOW_MODEL }}
+          # Cases marked useStrongModel (restraint tests) run on this instead of WORKFLOW_MODEL —
+          # a MANUAL-ONLY-skill non-activation check needs a model that follows instructions, which
+          # cheap gemini can't. OpenRouter slug form (the proxy routes anthropic/* to real sonnet).
+          EVAL_STRONG_MODEL: ${{ env.AGENTS_MODEL }}
       - if: failure()
         run: docker compose -f proxy/docker-compose.yml logs --tail 100
       - if: always()

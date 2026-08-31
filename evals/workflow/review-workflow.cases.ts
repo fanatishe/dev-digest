@@ -193,12 +193,18 @@ export const cases: WorkflowCase[] = [
   },
   // workflow-retro is linked from CLAUDE.md:72 but its own contract is MANUAL ONLY ("never run it
   // proactively"). Merely asking ABOUT a past run must NOT auto-launch it — an over-trigger guard.
+  // Pinned to the STRONG model: this is a RESTRAINT case, and the prompt ("which agents did it spin
+  // up") is a near-exact match to workflow-retro's own job ("reconstructs which agents ran"). A cheap
+  // tier model (gemini-2.5-flash) over-triggers here regardless of how well the skill is written —
+  // measured: it fires even with the MANUAL-ONLY gate front-loaded. A capable model honors the gate
+  // (measured: 3/3 dormant on claude-sonnet-5), so pinning measures the DESCRIPTION, not model floor.
   {
     kind: "activation",
     name: "near-miss negative — mentioning a past run must NOT auto-activate workflow-retro",
     prompt: "That last multi-agent run felt expensive. Roughly which agents did it spin up?",
     skill: "workflow-retro",
     shouldActivate: false,
+    useStrongModel: true,
     maxTurns: 4,
   },
 ];

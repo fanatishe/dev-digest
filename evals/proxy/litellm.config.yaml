@@ -16,6 +16,27 @@
 # arrives here as "deepseek/deepseek-chat" and is dispatched as "openrouter/deepseek/deepseek-chat".
 
 model_list:
+  # Nested-subagent model pin. The workflow tier's top-level session honours EVAL_MODEL, but when
+  # it DISPATCHES a subagent the Claude Agent SDK spawns that nested session on the real Anthropic
+  # model id in dash form (e.g. claude-opus-4-8) — which the wildcard route below would forward to
+  # OpenRouter as "openrouter/claude-opus-4-8", an invalid slug → HTTP 400 and a dead workflow-tier
+  # trace. Pin those dash-form ids (config.ts defaults + the SDK's default) to the tool-tier
+  # surrogate so the tier runs on the cheap subject. NOTE: this is a fixed target, so a
+  # workflow_dispatch tool_model override does NOT reach these nested subagents — the deeper fix is
+  # to propagate the eval model into subagent dispatch in src/runtime/run-claude.ts.
+  - model_name: "claude-opus-4-8"
+    litellm_params:
+      model: "openrouter/google/gemini-2.5-flash"
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: "claude-sonnet-5"
+    litellm_params:
+      model: "openrouter/google/gemini-2.5-flash"
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: "claude-haiku-4-5"
+    litellm_params:
+      model: "openrouter/google/gemini-2.5-flash"
+      api_key: os.environ/OPENROUTER_API_KEY
+  # Passthrough: EVAL_MODEL / EVAL_JUDGE_MODEL forwarded verbatim to OpenRouter.
   - model_name: "*"
     litellm_params:
       model: "openrouter/*"
@@ -24,6 +45,15 @@ model_list:
 litellm_settings:
   # Deterministic evals: never retry-with-jitter behind our back; the runners own retries.
   drop_params: true
+  # FAIL FAST. Without this, LiteLLM falls back to its default retry, which HONORS an upstream
+  # `Retry-After` header — so an OpenRouter 402 `in_flight_budget_exhausted` (Retry-After: 120)
+  # is retried ~twice and a single call hangs ~240s, tripping vitest's testTimeout and stacking
+  # 8 tests into a ~30-minute job. num_retries:0 surfaces the 402 immediately; request_timeout
+  # caps any single upstream call well under the eval runner's internal deadline (RUN_DEADLINE_MS
+  # =200s) and vitest's 240s testTimeout, so a stall returns a classifiable error the runner
+  # infra-SKIPs instead of a hard timeout. Transient-402 tolerance lives in the runners, not here.
+  num_retries: 0
+  request_timeout: 120
 
 general_settings:
   # No master_key on purpose: this is an ephemeral local/CI gateway. It runs in "no-auth" mode,

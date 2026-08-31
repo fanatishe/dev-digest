@@ -8,7 +8,7 @@
  *     SYSTEMIC effect: does a skill activate, does a subagent dispatch, does CLAUDE.md matter.
  */
 
-import { IS_BASELINE, WORKFLOW_ALLOWED_TOOLS } from "./config.js";
+import { IS_BASELINE, WORKFLOW_ALLOWED_TOOLS, WORKFLOW_DISALLOWED_TOOLS } from "./config.js";
 import { runClaude, type RunOptions } from "./runtime/run-claude.js";
 import { runContent } from "./runtime/dispatch.js";
 import { skillContent, agentContent, agentTools } from "./artifacts/load.js";
@@ -44,12 +44,16 @@ export function agentTask(prompt: string, agentName: string, opts: RunOptions = 
  * Use for workflow-level evals: skill activation, subagent dispatch, CLAUDE.md effect.
  * Ignores EVAL_CONFIG — the workflow tier has its own control-vs-treatment design.
  *
- * Safety: keep allowedTools a read-only allow-list (no Bash/Write/Edit) — a fresh session
- * with bypassPermissions could otherwise take real actions in the repo.
+ * Safety: allowedTools alone is NOT enough — under bypassPermissions it only auto-approves, so a
+ * fresh session would still hold Bash/Write/Edit and could take real actions in the live repo. The
+ * hard guard is disallowedTools, which removes those tools from context entirely. It also keeps the
+ * trace honest: with Bash gone the model must read files through the `Read` tool, so `filesRead`
+ * actually captures the reads these evals assert on (Bash `cat`/`grep` would slip past untraced).
  */
 export function workflowTask(prompt: string, opts: RunOptions = {}) {
   return runClaude(prompt, {
     allowedTools: WORKFLOW_ALLOWED_TOOLS,
+    disallowedTools: WORKFLOW_DISALLOWED_TOOLS,
     ...opts,
     settingSources: ["project"],
   });

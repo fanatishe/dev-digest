@@ -104,5 +104,23 @@
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."
+  },
+  "evalsPanel": {
+    "scoringCaption": "Scoring is mechanical — no model call.",
+    "newCase": "New eval case",
+    "runAll": "Run all evals",
+    "running": "Running…",
+    "viewDashboard": "View full dashboard →",
+    "runError": "Could not run evals — check your provider key and try again.",
+    "loadError": "Could not load eval cases.",
+    "emptyTitle": "No eval cases yet",
+    "emptyBodyAgent": "Turn an accepted or dismissed finding into a case from a PR review, or create one here to assert the expected findings for this agent on a sample diff.",
+    "emptyBodySkill": "Create a standalone case to assert the expected findings for this skill on a sample diff.",
+    "metrics": {
+      "recall": "RECALL",
+      "precision": "PRECISION",
+      "citation": "CITATION",
+      "tracesPassed": "TRACES PASSED"
+    }
   }
 }

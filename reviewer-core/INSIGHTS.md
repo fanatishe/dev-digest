@@ -70,6 +70,19 @@ for the rubric.
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
 
+### 2026-07-19 (Eval Pipeline L06 — pure zero-LLM scorer)
+Added `src/eval/score.ts` (`match`/`scoreCase`/`scoreBatch`) — the deterministic eval scorer.
+**Zero-LLM is STRUCTURAL, not asserted**: the functions take no `LLMProvider` and the module
+imports none, so the AC-6 proof at the unit level is *import-absence* (`test/eval-score.test.ts`
+imports no provider); the call-count proof (`mock.calls === K`) lives in the server it-test, not
+here. Mirror `grounding.ts`'s `FULL_FILE_KINDS` + closed-range overlap **locally** (reproduce, do
+not import server code — reviewer-core stays pure). Subtlety that's easy to conflate reading AC-7:
+the full-file short-circuit keys off the **produced finding's** `f.kind` (`FindingKind`:
+secret_leak/lethal_trifecta/phantom/hook), NOT the expectation's `kind` (`must_find`/
+`must_not_flag`) — two unrelated axes. `citation_accuracy = grounded / (grounded + dropped)` needs
+the **caller** to pass the pre-grounding count (`reviewPullRequest` already dropped ungrounded
+findings, so `review.findings` alone makes citation trivially 1.0).
+
 ### 2026-07-17 (Project Context — specs slot)
 Changed the `specs` prompt slot from `string[]` to `{ path, body }[]` and wired the
 long-dormant `## Project context` block: one `### <path>` header per doc (OUTSIDE the

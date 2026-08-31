@@ -315,6 +315,51 @@ for the rubric.
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
 
+### 2026-07-19 (Eval Pipeline L06 — client surfaces + re-vendor)
+Built the client eval surfaces (shared `components/evals/**`, `app/eval/**` dashboard,
+`lib/hooks/evals.ts`, pure `lib/evals/repro.ts`). Learnings:
+- **Re-vendoring a shared contract is a whole-directory sync, not a one-file add.** Adding
+  `eval-batch.ts` alone would not typecheck — the client's `knowledge.ts`/`eval-ci.ts` were stale
+  (missing `AgentVersion`/`AgentVersionConfig`, the `openrouter` provider, `AgentManifest`). Both
+  vendor dirs use identical `.js`-relative imports, so the correct sync is a verbatim `cp` of each
+  server canonical file + a byte `diff` to prove agreement (AC-28). `lib/hooks/index.ts` is
+  intentionally partial (platform hooks only); a new domain hook file is imported directly as
+  `@/lib/hooks/evals`, not added to the barrel.
+- **`@testing-library/user-event` is NOT installed** — new `*.test.tsx` use `fireEvent`; importing
+  user-event fails typecheck (bit three WPs this run).
+- **A shared owner-agnostic panel gets its owner id two ways.** `AgentEditor` passes
+  `owner={{kind:'agent',id}}` as a prop; SkillEditor renders `<EvalsTab/>` **propless**, so it reads
+  the skill id from `/skills/[id]` via `useParams()`. The route param is the sanctioned fallback when
+  you can't thread a prop through a parent you don't own. Consequence: a shared `components/` panel
+  may have no i18n namespace of its own (`EvalsPanel` reads `agents.evalsPanel.*` even in skill
+  mode), and a route-scoped view owning no `messages/*.json` colocates copy in `constants.ts` rather
+  than reaching into a sibling-owned namespace — next-intl throws on a missing key in a **present**
+  namespace, so provide every namespace a component reads in its test provider.
+- **A route `_components` panel can read sibling data from the React Query cache its ancestor already
+  filled.** `FindingsPanel` gets each finding's owning-review `agent_id` via `usePrReviews(prId)` (a
+  `["reviews",prId]` cache hit — no extra fetch) instead of threading a new prop through the unowned
+  `ReviewRunAccordion`. Caveat: a colocated `vi.mock` of that hooks module must export the new hook
+  or the panel throws "not a function".
+- **A shared-ring `components/**` test must not import a route's private `_components/**`** (a real
+  `frontend-ui-architecture` boundary break even when production is clean) — host each assertion in
+  the ring that legally owns the component under test (route test may import its own `_components/`).
+  `recharts` (`Sparkline`/`LineChart`) is demo-fragile in jsdom (0-width/height warnings) — wrap
+  `LineChart` in a tiny local class error boundary with a three-`Sparkline` fallback
+  (`react-error-boundary` is not a client dependency).
+- **`tsc`/`vitest` green does NOT prove the Next webpack build resolves `@devdigest/shared`.** The
+  vendored contracts use `.js` specifiers in their relative imports (needed for the server's Node-
+  ESM build). `tsc` (moduleResolution) and `vitest` (vite/esbuild) resolve `.js`→`.ts`; **webpack
+  does not by default.** Every pre-existing client import of the barrel is `import type` (erased at
+  compile, never bundled), so `index.ts`'s `export * from './contracts/findings.js'` was never in
+  the runtime graph — until the eval feature **value-imported** a Zod schema (`EvalExpectedOutput`
+  for `safeParse`), which pulled the barrel's `.js` re-exports into webpack and produced
+  `Module not found: './contracts/findings.js'` at build/dev time only. Fix: `next.config.mjs`
+  `webpack.resolve.extensionAlias = { '.js': ['.ts','.tsx','.js'], … }` (preserves the byte-identical
+  vendoring; do NOT strip the `.js` from the contracts — the server needs them). Lesson: when a WP
+  adds the **first runtime value import** from `@devdigest/shared`, run an actual `next build` — the
+  typecheck/test lanes can't see this class of webpack-only resolution failure. (If dev ever moves to
+  `--turbopack`, replicate via the turbopack resolve config.)
+
 ### 2026-07-17 (Risk Areas + Review Focus — findings-derived, no LLM)
 The RISK AREAS section (under the Intent body) and the full-width REVIEW FOCUS section are **two
 lenses on the SAME already-computed data**: the latest review's non-dismissed findings from

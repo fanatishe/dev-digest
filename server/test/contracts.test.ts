@@ -15,6 +15,8 @@ import {
   Settings,
   Repo,
   PrDetail,
+  EvalExpectedOutput,
+  EvalBatch,
 } from '@devdigest/shared';
 
 /**
@@ -215,6 +217,48 @@ describe('AI contracts parse fixtures', () => {
         kind: 'decision',
         confidence: 0.92,
         sources: [{ pr: 401, context: 'ctx' }],
+      }),
+    ).not.toThrow();
+  });
+
+  it('EvalExpectedOutput (eval-batch) — expectation round-trip', () => {
+    const parsed = EvalExpectedOutput.safeParse({
+      expectations: [
+        { kind: 'must_find', file: 'src/config.ts', start_line: 12, end_line: 12, severity: 'CRITICAL', category: 'security' },
+        { kind: 'must_not_flag', file: 'src/util.ts', start_line: 3, end_line: 9 },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.expectations).toHaveLength(2);
+    // `severity`/`category`/`note` are nullish — absent is legal.
+    expect(parsed.success && parsed.data.expectations[1]!.severity).toBeUndefined();
+    // A bad `kind` (not one of the two expectation kinds) is rejected.
+    expect(
+      EvalExpectedOutput.safeParse({
+        expectations: [{ kind: 'maybe', file: 'a.ts', start_line: 1, end_line: 1 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('EvalBatch (eval-batch) — trend-point row round-trip', () => {
+    // `agent_version`/`cost_usd`/`duration_ms` are nullable (ad-hoc/degraded rows).
+    expect(() =>
+      EvalBatch.parse({
+        id: 'b1',
+        workspace_id: 'w1',
+        owner_kind: 'agent',
+        owner_id: 'a1',
+        agent_version: null,
+        ran_at: '2026-07-19T00:00:00.000Z',
+        recall: 0.82,
+        precision: 0.91,
+        citation_accuracy: 0.95,
+        pass_rate: 0.85,
+        traces_passed: 17,
+        traces_total: 20,
+        cases_total: 8,
+        cost_usd: null,
+        duration_ms: null,
       }),
     ).not.toThrow();
   });

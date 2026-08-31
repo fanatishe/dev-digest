@@ -13,7 +13,10 @@ import { AgentEditor } from "../AgentEditor";
 import { useAgents, useAgent, useUpdateAgent } from "@/lib/hooks/agents";
 import { ApiError } from "@/lib/api";
 
-const VALID_TABS = ["config", "skills", "context"];
+// "evals" MUST be here or the ?tab=evals deep-link falls back to config and the
+// Evals tab never mounts (client INSIGHTS 2026-07-17). Keep in lockstep with
+// AgentEditor/constants.ts TABS.
+const VALID_TABS = ["config", "skills", "context", "evals"];
 
 export function AgentDetailView({ id }: { id: string }) {
   const search = useSearchParams();

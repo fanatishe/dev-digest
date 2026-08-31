@@ -27,13 +27,14 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    // Other SKILLS LAB items (Eval Dashboard) land here as their pages are built
-    // in later lessons.
     section: "SKILLS LAB",
     items: [
       { key: "skills", label: "Skills", icon: "Sparkles", href: "/skills", gKey: "s" },
       { key: "agents", label: "Agents", icon: "Cpu", href: "/agents", gKey: "a" },
       { key: "conventions", label: "Conventions", icon: "ListChecks", href: "/conventions", gKey: "c" },
+      // The label renders from `messages/en/shell.json` `nav.eval` (not the `label`
+      // field), and `activeKeyFor` already maps `/eval` → "eval".
+      { key: "eval", label: "Eval Dashboard", icon: "FlaskConical", href: "/eval", gKey: "e" },
     ],
   },
 ];
@@ -65,6 +66,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { keys: "g s", label: "Go to Skills", group: "Navigation" },
   { keys: "g a", label: "Go to Agents", group: "Navigation" },
   { keys: "g c", label: "Go to Conventions", group: "Navigation" },
+  { keys: "g e", label: "Go to Eval Dashboard", group: "Navigation" },
   { keys: "j / k", label: "Next / previous finding", group: "Findings" },
   { keys: "a", label: "Accept finding", group: "Findings" },
   { keys: "d", label: "Dismiss finding", group: "Findings" },

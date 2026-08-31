@@ -12,6 +12,25 @@ import {
 import { SkillsRepository } from '../modules/skills/repository.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import type { SkillSource, SkillType } from '@devdigest/shared';
+import { scoreBatch, scoreCase } from '@devdigest/reviewer-core';
+import {
+  GOLDSET_AGENT_DESCRIPTION,
+  GOLDSET_AGENT_MODEL,
+  GOLDSET_AGENT_NAME,
+  GOLDSET_AGENT_PROVIDER,
+  GOLDSET_CASES,
+  GOLDSET_FLAKY_CASE,
+  GOLDSET_PINNED_VERSION,
+  GOLDSET_STABLE_CASE,
+  GOLDSET_VERSIONS,
+  goldsetAdhocInputs,
+  goldsetBatchInputs,
+} from './fixtures/eval-goldset.js';
+import {
+  SKILL_GOLDSET_CASES,
+  SKILL_GOLDSET_SKILL_NAME,
+  skillGoldsetSides,
+} from './fixtures/eval-skill-goldset.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -441,7 +460,257 @@ Flag as WARNING if the diff:
     await agentsRepo.linkSkill(apiAgent!.id, apiSkillIds[i]!, i);
   }
 
+  // ---- Version snapshots for the built-in agents -------------------------------
+  // The reviewers above are bulk-inserted RAW (not via `agentsRepo.insert`), so
+  // they never got an `agent_versions` row. Any eval run/Compare/Promote resolves
+  // the agent's pinned version via `getVersion` and would fail ("Agent version not
+  // found"). Snapshot each agent's current config (with its now-linked skills) at
+  // its current version. Idempotent — agents that already have the snapshot (the
+  // gold-set agent) are skipped by `onConflictDoNothing`. Re-running `db:seed`
+  // therefore BACKFILLS existing DBs.
+  for (const a of await agentsRepo.list(workspaceId)) {
+    await agentsRepo.ensureCurrentVersionSnapshot(workspaceId, a.id);
+  }
+
+  // ---- Eval gold-set (L06) — real scorer output, no LLM ------------------------
+  await seedEvalGoldset(db, workspaceId, userId);
+  await seedEvalSkillGoldset(db, workspaceId);
+
   return { workspaceId, userId };
+}
+
+/** `n` days before `now`, as a concrete timestamp (explicit back-dating — NOT `defaultNow`). */
+function daysAgo(n: number): Date {
+  return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Seed the synthetic eval gold-set so the L06 demo runs on a fresh DB with **no
+ * API key** (AC-16, AC-17, AC-26). Zero LLM: the PURE scorer
+ * (`scoreCase`/`scoreBatch`, imported from `@devdigest/reviewer-core`) runs at seed
+ * time over the fixtures in `fixtures/eval-goldset.ts`, and its output is what we
+ * insert into `eval_runs` / `eval_batches`. `ran_at` is back-dated explicitly per
+ * version so the trend spreads over time (skill note, `drizzle-orm-patterns`).
+ *
+ * Idempotent, like the rest of the seed: the agent + cases are insert-if-missing
+ * by name, and the batches/runs are seeded only when this owner has none yet — so
+ * `pnpm db:seed` is safe to re-run without duplicating rows.
+ */
+export async function seedEvalGoldset(
+  db: Db,
+  workspaceId: string,
+  userId: string,
+): Promise<void> {
+  const agentsRepo = new AgentsRepository(db);
+
+  // ---- agent (insert-if-missing by name), snapshotting one version per prompt ----
+  let [agent] = await db
+    .select()
+    .from(t.agents)
+    .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, GOLDSET_AGENT_NAME)));
+  if (!agent) {
+    agent = await agentsRepo.insert({
+      workspaceId,
+      name: GOLDSET_AGENT_NAME,
+      description: GOLDSET_AGENT_DESCRIPTION,
+      provider: GOLDSET_AGENT_PROVIDER,
+      model: GOLDSET_AGENT_MODEL,
+      systemPrompt: GOLDSET_VERSIONS[0]!.systemPrompt,
+      repoIntel: false,
+      createdBy: userId,
+    });
+    // Bump through the remaining versions; each prompt edit snapshots a new
+    // agent_versions row (so Compare can resolve every version's prompt).
+    for (let i = 1; i < GOLDSET_VERSIONS.length; i += 1) {
+      await agentsRepo.update(workspaceId, agent.id, {
+        systemPrompt: GOLDSET_VERSIONS[i]!.systemPrompt,
+      });
+    }
+  }
+  const agentId = agent.id;
+
+  // ---- cases (insert-if-missing by name), owner = the gold-set agent ----
+  const caseIds = new Map<string, string>();
+  for (const c of GOLDSET_CASES) {
+    let [row] = await db
+      .select()
+      .from(t.evalCases)
+      .where(
+        and(
+          eq(t.evalCases.workspaceId, workspaceId),
+          eq(t.evalCases.ownerKind, 'agent'),
+          eq(t.evalCases.ownerId, agentId),
+          eq(t.evalCases.name, c.name),
+        ),
+      );
+    if (!row) {
+      [row] = await db
+        .insert(t.evalCases)
+        .values({
+          workspaceId,
+          ownerKind: 'agent',
+          ownerId: agentId,
+          name: c.name,
+          inputDiff: c.inputDiff,
+          expectedOutput: c.expected,
+          notes: null,
+        })
+        .returning();
+    }
+    caseIds.set(c.name, row!.id);
+  }
+
+  // ---- batches + runs (seed only if this owner has no batch yet — idempotent) ----
+  const [existingBatch] = await db
+    .select({ id: t.evalBatches.id })
+    .from(t.evalBatches)
+    .where(and(eq(t.evalBatches.ownerKind, 'agent'), eq(t.evalBatches.ownerId, agentId)))
+    .limit(1);
+  if (existingBatch) return;
+
+  for (const v of GOLDSET_VERSIONS) {
+    const inputs = goldsetBatchInputs(v.version);
+    const batchScore = scoreBatch(inputs); // PURE — zero LLM (AC-26).
+    const ranAt = daysAgo(v.ranAtDaysAgo);
+
+    const [batch] = await db
+      .insert(t.evalBatches)
+      .values({
+        workspaceId,
+        ownerKind: 'agent',
+        ownerId: agentId,
+        agentVersion: v.version,
+        ranAt,
+        recall: batchScore.recall,
+        precision: batchScore.precision,
+        citationAccuracy: batchScore.citation_accuracy,
+        passRate: batchScore.pass_rate,
+        tracesPassed: batchScore.traces_passed,
+        tracesTotal: batchScore.traces_total,
+        casesTotal: inputs.length,
+        costUsd: null, // seeded from fixtures, not a paid run
+        durationMs: null,
+      })
+      .returning();
+
+    // One eval_runs per case, scored by the SAME pure scorer, tagged with the batch.
+    for (const bc of inputs) {
+      const sc = scoreCase(bc.expectations, bc.grounded, bc.producedCount);
+      await db.insert(t.evalRuns).values({
+        caseId: caseIds.get(bc.name)!,
+        ranAt,
+        actualOutput: bc.grounded,
+        pass: sc.pass,
+        recall: sc.recall,
+        precision: sc.precision,
+        citationAccuracy: sc.citationAccuracy,
+        durationMs: null,
+        costUsd: null,
+        batchId: batch!.id,
+        agentVersion: v.version,
+      });
+    }
+  }
+
+  // ---- ad-hoc "Run 5×" outcomes: a stable case (5/5) + a flaky case (~2/5), AC-17 ----
+  // batch_id null (ad-hoc), pinned version, and NEWEST ran_at so the last-N repro
+  // window reads exactly these five runs (not the per-version batch runs above).
+  for (const caseName of [GOLDSET_STABLE_CASE, GOLDSET_FLAKY_CASE]) {
+    const runs = goldsetAdhocInputs(caseName);
+    for (let k = 0; k < runs.length; k += 1) {
+      const inp = runs[k]!;
+      const sc = scoreCase(inp.expectations, inp.grounded, inp.producedCount);
+      await db.insert(t.evalRuns).values({
+        caseId: caseIds.get(caseName)!,
+        ranAt: new Date(Date.now() - k * 60 * 1000), // within the last few minutes
+        actualOutput: inp.grounded,
+        pass: sc.pass,
+        recall: sc.recall,
+        precision: sc.precision,
+        citationAccuracy: sc.citationAccuracy,
+        durationMs: null,
+        costUsd: null,
+        batchId: null,
+        agentVersion: GOLDSET_PINNED_VERSION,
+      });
+    }
+  }
+}
+
+/**
+ * Seed the synthetic SKILL eval gold-set so the SkillEditor Evals tab's
+ * "With skill / Without skill" comparison is populated on a fresh DB with no key.
+ *
+ * Zero LLM: each case's synthetic with/without engine output (from the fixtures) is
+ * scored by the PURE scorer at seed time; the paired result is stored in
+ * `eval_runs.actual_output` ({ with, without }) with the scalar columns holding the
+ * WITH-skill numbers (so any owner-agnostic metric derivation reads the with-skill
+ * value). Idempotent: cases are insert-if-missing and the run is seeded only when the
+ * skill owner has none yet.
+ */
+export async function seedEvalSkillGoldset(db: Db, workspaceId: string): Promise<void> {
+  const skillsRepo = new SkillsRepository(db);
+  const skill = (await skillsRepo.list(workspaceId)).find(
+    (s) => s.name === SKILL_GOLDSET_SKILL_NAME,
+  );
+  if (!skill) return; // the demo skill is not seeded — nothing to attach to.
+
+  // Only seed once per skill owner (idempotent).
+  const [existing] = await db
+    .select({ id: t.evalCases.id })
+    .from(t.evalCases)
+    .where(
+      and(
+        eq(t.evalCases.ownerKind, 'skill'),
+        eq(t.evalCases.ownerId, skill.id),
+      ),
+    )
+    .limit(1);
+  if (existing) return;
+
+  for (const c of SKILL_GOLDSET_CASES) {
+    const [row] = await db
+      .insert(t.evalCases)
+      .values({
+        workspaceId,
+        ownerKind: 'skill',
+        ownerId: skill.id,
+        name: c.name,
+        inputDiff: c.inputDiff,
+        expectedOutput: c.expected,
+        notes: null,
+      })
+      .returning();
+
+    const { expectations, withGrounded, withoutGrounded } = skillGoldsetSides(c);
+    const withScore = scoreCase(expectations, withGrounded, withGrounded.length);
+    const withoutScore = scoreCase(expectations, withoutGrounded, withoutGrounded.length);
+    const side = (grounded: typeof withGrounded, sc: typeof withScore) => ({
+      grounded,
+      recall: sc.recall,
+      precision: sc.precision,
+      citation_accuracy: sc.citationAccuracy,
+      pass: sc.pass,
+    });
+
+    // Scalar columns = WITH-skill result; actual_output carries BOTH sides.
+    await db.insert(t.evalRuns).values({
+      caseId: row!.id,
+      ranAt: daysAgo(1),
+      actualOutput: {
+        with: side(withGrounded, withScore),
+        without: side(withoutGrounded, withoutScore),
+      },
+      pass: withScore.pass,
+      recall: withScore.recall,
+      precision: withScore.precision,
+      citationAccuracy: withScore.citationAccuracy,
+      durationMs: null,
+      costUsd: null,
+      batchId: null,
+      agentVersion: skill.version,
+    });
+  }
 }
 
 // CLI entrypoint

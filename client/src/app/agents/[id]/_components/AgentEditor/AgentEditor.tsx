@@ -11,6 +11,7 @@ import { useActiveRepo } from "@/lib/repo-context";
 import { ConfigTab } from "./_components/ConfigTab";
 import { SkillsTab } from "./_components/SkillsTab";
 import { ContextTab } from "./_components/ContextTab";
+import { EvalsPanel } from "@/components/evals/EvalsPanel";
 import { TABS } from "./constants";
 import { s } from "./styles";
 
@@ -35,6 +36,8 @@ export function AgentEditor({ agent, tab, onTab }: { agent: Agent; tab: string; 
           <SkillsTab key={agent.id} agentId={agent.id} />
         ) : tab === "context" ? (
           <ContextTab key={agent.id} agentId={agent.id} repoId={repoId} />
+        ) : tab === "evals" ? (
+          <EvalsPanel key={agent.id} owner={{ kind: "agent", id: agent.id }} allowFromFinding showDashboardLink />
         ) : (
           <ConfigTab key={agent.id} agent={agent} />
         )}

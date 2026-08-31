@@ -104,6 +104,20 @@ for the rubric.
   escapes). The discovery walk already skips symlinks; the direct reader was the asymmetric
   hole. (2026-07-17, Project Context)
 
+- **A pgvector column-dimension mismatch produces a SILENT zero-result query, not an error.**
+  When you change embedding models and re-embed content (or miss a re-embedding), the stored
+  vectors have dimension N but the query vector has dimension M. A `<->` similarity search
+  with mismatched dimensions returns **zero rows** — no exception, no hint, just silently
+  correct results. The query is technically valid on its own; PostgreSQL just finds no
+  matches (a dimension mismatch guarantees orthogonality by construction). This is horrifying
+  because: (1) the client shows "no results" instead of "something is broken"; (2) grep for
+  "query returned empty" finds config bugs, not dimension bugs. **Always validate: when
+  changing embedding models, run a DISTINCT count on the stored vectors' dimensions
+  (`SELECT DISTINCT pgvector.dimensionality(column) FROM table`). After re-embedding, run
+  the same query and assert the result is a single row — if you see two distinct dimensions,
+  one embedding run was incomplete.** This is not a psycopg3 issue or a drizzle issue; it is
+  pgvector's design. (2026-07-17)
+
 ## Codebase Patterns
 <!-- Project conventions, architecture and naming decisions specific to this module. -->
 
@@ -334,6 +348,41 @@ for the rubric.
 
 ## Session Notes
 <!-- Datestamped one-liners, newest first: ### YYYY-MM-DD -->
+
+### 2026-07-19 (Eval Pipeline L06 — modules/eval + eval_batches + skills facade)
+Built `modules/eval` (routes→service→run-executor→repository) on the pre-scaffolded `eval_cases`/
+`eval_runs` + a NEW `eval_batches` table (additive migration `0016`, plus `0017` FK indexes). Key
+learnings:
+- **Cross-module data goes through a NEW container facade — and the getter must read `overrides`.**
+  A skill eval case's live run needs `skill.body`/`skill.version` from a skill id, but the eval
+  module may neither import `modules/skills` nor cross-query. Added a `container.skillsRepo` getter.
+  Gotcha: `agentsRepo`/`reviewRepo` getters do **not** read `this.overrides`; the adapter getters
+  (`git`/`codeIndex`/`repoIntel`) do — so a facade that tests must inject
+  (`ContainerOverrides.skillsRepo`) MUST use the override-checking form, or a literal `agentsRepo`
+  mirror leaves the field dead.
+- **Additive-schema false positive.** Attaching a Drizzle index forces the single-arg
+  `pgTable(name,{…})` into the two-arg `(name,{…},(t)=>({…}))` form, re-indenting every existing
+  column line — the shared-table guard (and a naïve line-diff) reads that as "altering existing
+  columns." Verify additivity against the **generated migration SQL** (`CREATE TABLE`/`ADD COLUMN`/
+  `CREATE INDEX` only, zero `DROP`/`ALTER COLUMN`), not the schema-file line diff. Related:
+  `pr-self-review` diffs `merge-base(main)..working-tree`, so in a concurrent multi-agent tree it
+  attributes siblings' edits to your diff — interpret CRITICALs against your Owns glob.
+- **Zero-LLM eval proof = mock call-count**, not a return value (`service.it.test.ts`: after run-all
+  over K cases, `mock.calls.filter(completeStructured).length === K`). Skill-host runs use the
+  workspace-default provider (`EVAL_SKILL_HOST_PROVIDER='openrouter'`), NOT `openai` — inject the
+  mock under `{ llm: { openrouter: mock } }` and assert the assembled input via the recorded
+  `req.messages` (system starts with `EVAL_SKILL_HOST_PROMPT`, user carries the verbatim skill body).
+- **Hermetic eval inputs**: eval reuses `reviewPullRequest` with repo_intel OFF (no
+  `callers`/`repoMap`/`intent`/`prDescription`) so only the prompt moves the metrics. Derive a
+  case's pinned repro version from the **last run's `agent_version`**, not the owner — one query path
+  serves both agent and skill owners.
+- **Seeding a real-scorer trend**: back-dating `eval_runs`/`eval_batches` needs RAW drizzle inserts
+  (`InsertEvalBatch/Run` don't expose `ran_at`). The pinned-version repro window reads "last run's
+  version," so seeded ad-hoc "Run 5×" rows must be the NEWEST `ran_at` at that version (batch runs
+  back-dated days ago) to read a clean 5/5 vs 2/5. Prove seeded metrics are *real* scorer output by
+  exporting the `BatchCase[]` builder and having BOTH seed and test call it, asserting equality
+  (`toBeCloseTo(_,10)` for float8). Gold-set demo diffs trip the secret-scanner unless you avoid the
+  `(key|token|secret|password)\s*[:=]\s*"…"` shape — represent issues as SQL-concat/null-deref/N+1.
 
 ### 2026-07-17 (Risk Brief SPEC-02 — built LLM brief, then REVERTED to findings-derived)
 An LLM `modules/brief` (`POST /pulls/:id/brief` → one `completeStructured` → cached `pr_brief`) was

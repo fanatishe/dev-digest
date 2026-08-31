@@ -71,7 +71,9 @@
     "run": "Run",
     "running": "Running…",
     "edit": "Edit",
-    "delete": "Delete"
+    "delete": "Delete",
+    "withSkill": "With skill {pct}",
+    "withoutSkill": "Without skill {pct}"
   },
   "page": {
     "crumbSkillsLab": "Skills Lab",
@@ -80,5 +82,66 @@
     "crumbEvals": "Evals",
     "crumbNewCase": "New case",
     "crumbEvalCase": "Eval case"
+  },
+  "expectation": {
+    "mustFind": "Must find",
+    "mustNotFlag": "Must not flag"
+  },
+  "findingCard": {
+    "turnIntoEval": "Turn into eval case",
+    "turnIntoEvalAria": "Turn “{title}” into an eval case"
+  },
+  "repro": {
+    "noRuns": "No runs",
+    "reliableAria": "Reproduces reliably: {passed} of {total} runs passed",
+    "unstableAria": "Unstable: only {passed} of {total} runs passed",
+    "stripAria": "Reproduction: {passed} of {total} runs passed",
+    "lastPassed": "Last run passed",
+    "lastFailed": "Last run failed",
+    "reproduced": "{passed}/{total} reproduced"
+  },
+  "caseModal": {
+    "title": "Eval case · {name}",
+    "newTitle": "New eval case",
+    "subtitleAccepted": "Seeded from an accepted finding · assert the expected output",
+    "subtitleDismissed": "Seeded from a dismissed finding · assert it must not flag",
+    "subtitleBlank": "Author an expected-output assertion on a sample diff",
+    "positiveCase": "Positive case",
+    "negativeCase": "Negative case",
+    "mustFindDesc": "MUST find “{title}” at {ref}",
+    "mustNotFlagDesc": "MUST NOT flag “{title}” at {ref}",
+    "nameLabel": "Name",
+    "namePlaceholder": "must-find-hardcoded-secret",
+    "inputLabel": "Input",
+    "tabs": {
+      "diff": "Diff",
+      "files": "Files",
+      "prMeta": "PR meta"
+    },
+    "diffEmpty": "No diff to show for this file.",
+    "filesEmpty": "This PR changes no files.",
+    "actualOutput": "Actual output",
+    "titleLabel": "Title",
+    "bodyLabel": "Body",
+    "linkedIssueLabel": "Linked issue",
+    "noValue": "—",
+    "expectedOutput": "Expected output",
+    "expectedAria": "Expected output JSON",
+    "validJson": "valid JSON",
+    "invalidJson": "invalid JSON",
+    "findingSkeleton": "Finding skeleton",
+    "runOnSave": "Run on save",
+    "cancel": "Cancel",
+    "runCase": "Run case",
+    "save": "Save",
+    "running": "Running…",
+    "runError": "Could not run the case. Check your provider key and try again.",
+    "saveError": "Could not save the case.",
+    "mustFindBlank": "MUST find the expected finding in this diff",
+    "mustNotFlagBlank": "MUST NOT flag anything in this diff",
+    "diffPlaceholder": "Paste a unified diff (git style) covering one or more files…",
+    "filesFromDiffEmpty": "No files yet — add a diff in the Diff tab.",
+    "toggleKindAria": "Toggle positive or negative case",
+    "toggleKindHint": "Click to switch positive / negative"
   }
 }

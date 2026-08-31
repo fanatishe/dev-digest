@@ -23,12 +23,40 @@ import { lineLabel } from "./helpers";
 import { githubBlobUrl } from "../../../../../../../lib/github-urls";
 import { s } from "./styles";
 
+/** The "Turn into eval case" ghost action (AC-1). Kept as its own tiny component so
+ *  the `eval` i18n namespace is only read when the affordance actually renders —
+ *  a FindingCard shown outside the eval flow never touches that namespace. */
+function TurnIntoEvalButton({
+  title,
+  disabled,
+  onClick,
+}: {
+  title: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const te = useTranslations("eval");
+  return (
+    <Button
+      kind="ghost"
+      size="sm"
+      icon="FlaskConical"
+      disabled={disabled}
+      aria-label={te("findingCard.turnIntoEvalAria", { title })}
+      onClick={onClick}
+    >
+      {te("findingCard.turnIntoEval")}
+    </Button>
+  );
+}
+
 export function FindingCard({
   f,
   focused,
   defaultExpanded,
   reveal,
   onAction,
+  onTurnIntoEval,
   pending,
   repoFullName,
   headSha,
@@ -40,6 +68,9 @@ export function FindingCard({
    *  (deep-link / "open finding" from a popover). */
   reveal?: number;
   onAction?: (action: FindingActionKind, reply?: string) => void;
+  /** When provided, show a "Turn into eval case" action (AC-1). Absent when the
+   *  owning review has no agent_id, which hides the affordance (AC-3). */
+  onTurnIntoEval?: () => void;
   pending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
@@ -121,6 +152,9 @@ export function FindingCard({
             >
               {t("finding.dismiss")}
             </Button>
+            {onTurnIntoEval && (
+              <TurnIntoEvalButton title={f.title} disabled={pending} onClick={onTurnIntoEval} />
+            )}
           </div>
         </div>
       )}

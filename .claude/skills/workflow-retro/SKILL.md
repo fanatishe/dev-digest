@@ -1,19 +1,24 @@
 ---
 name: workflow-retro
 description: >-
-  Post-run retrospective over a multi-agent / workflow session. Reconstructs the run —
-  which agents were launched, in what order, sync vs parallel vs background, and each one's
-  tokens, tool calls, duration and outcome — then aggregates cost and parallelism and mines
-  the agents' own reports for what was hard, what was easy, what work was duplicated
+  MANUAL ONLY — this skill NEVER activates on its own. Run it ONLY when the user explicitly
+  asks for a retrospective by name (see Explicit triggers below); never proactively, never
+  automatically, never at session end, and never merely because a message mentions or asks
+  about a past run. A bare factual question about a previous run — e.g. "which agents did it
+  spin up", "was that run expensive", "how many tokens did it cost", "how long did it take" —
+  is NOT a trigger: answer it directly from the trace and do NOT launch this skill.
+  What it does, once explicitly invoked: a post-run retrospective over a multi-agent / workflow
+  session. Reconstructs the run (which agents ran, in what order, sync vs parallel vs background,
+  and each one's tokens, tool calls, duration and outcome), aggregates cost and parallelism, and
+  mines the agents' own reports for what was hard, what was easy, what work was duplicated
   (re-grounding, overlapping file reads, re-asked questions) and what was missed (leftover
-  clarifications, coverage gaps). Ends with ranked, concrete recommendations for running the
-  next similar workflow cheaper and cleaner. Read-only analysis that writes only a retro report —
-  persisted to docs/retros/<date>-<slug>.md and summarized in-conversation — never product source, never commits.
-  Runs in the main conversation because that is the only place the dispatched agents' usage
-  blocks, agentIds and workflow journals are visible. MANUAL ONLY — invoke exclusively when the
-  user explicitly asks; never run it proactively, automatically, or at session end. Trigger terms:
-  /workflow-retro, workflow retro, retro, retrospective, post-mortem, how did that run go,
-  evaluate the workflow, analyze the agent run.
+  clarifications, coverage gaps). Ends with ranked, concrete recommendations for running the next
+  similar workflow cheaper and cleaner. Read-only analysis that writes only a retro report —
+  persisted to docs/retros/<date>-<slug>.md and summarized in-conversation — never product source,
+  never commits. Runs in the main conversation because that is the only place the dispatched
+  agents' usage blocks, agentIds and workflow journals are visible.
+  Explicit triggers (the user must ask for the retro itself, not just about a run): /workflow-retro,
+  "workflow retro", "workflow retrospective", "run a retro/retrospective on that run".
 metadata:
   tags: retro, workflow, orchestration, multi-agent, evaluation, meta
 allowed-tools: Read, Grep, Glob, Bash, Write, TaskList, TaskGet, TaskOutput, Skill
